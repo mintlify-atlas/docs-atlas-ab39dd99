@@ -89,12 +89,22 @@
             ]
           },
           {
+            "group": "Feedback",
+            "pages": [
+              "api/feedback/submit",
+              "api/feedback/manage",
+              "api/feedback/golden-examples"
+            ]
+          },
+          {
             "group": "Administration",
             "pages": [
               "api/admin/users",
               "api/admin/roles",
               "api/admin/permissions",
-              "api/admin/settings"
+              "api/admin/settings",
+              "api/admin/integrations",
+              "api/admin/llm-providers"
             ]
           }
         ]

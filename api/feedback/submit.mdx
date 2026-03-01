@@ -1,0 +1,352 @@
+---
+title: 'Submit Feedback'
+description: 'User feedback endpoints for rating assistant responses'
+---
+
+## Overview
+
+The feedback submission endpoints allow users to provide feedback on assistant responses through a simple thumbs up/down mechanism. When auto-approval is enabled, positive feedback automatically creates golden examples for continuous model improvement.
+
+## Feedback Lifecycle
+
+Feedback goes through the following states:
+
+1. **Pending** - Initial state when feedback is submitted
+2. **Auto-approved** - Automatically approved based on settings (creates golden example)
+3. **Reviewed** - Manually reviewed and resolved by admin (creates golden example)
+4. **Dismissed** - Reviewed but not used for improvement
+
+<Note>
+When auto-approval is enabled for a feedback type, golden examples are automatically created upon submission, allowing the system to learn from user preferences in real-time.
+</Note>
+
+---
+
+## Submit Feedback
+
+<api method="POST" endpoint="/feedback" auth="required">
+Submit thumbs up/down feedback for an assistant message.
+</api>
+
+### Request Body
+
+<ParamField body="message_id" type="string" required>
+  ID of the message being rated
+</ParamField>
+
+<ParamField body="feedback_type" type="string" required>
+  Type of feedback. Must be either `positive` or `negative`
+</ParamField>
+
+<ParamField body="reason" type="string">
+  Optional reason for the feedback. May be required based on settings
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string">
+  Unique identifier for the feedback
+</ResponseField>
+
+<ResponseField name="message_id" type="string">
+  ID of the message that was rated
+</ResponseField>
+
+<ResponseField name="user_id" type="string">
+  ID of the user who submitted the feedback
+</ResponseField>
+
+<ResponseField name="feedback_type" type="string">
+  Type of feedback: `positive` or `negative`
+</ResponseField>
+
+<ResponseField name="reason" type="string | null">
+  The reason provided for the feedback
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status: `pending`, `auto_approved`, `reviewed`, or `dismissed`
+</ResponseField>
+
+<ResponseField name="reviewed_by" type="string | null">
+  ID of the admin who reviewed the feedback (null if not reviewed)
+</ResponseField>
+
+<ResponseField name="reviewed_at" type="datetime | null">
+  Timestamp when the feedback was reviewed (null if not reviewed)
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  Timestamp when the feedback was created
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://api.example.com/feedback \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message_id": "550e8400-e29b-41d4-a716-446655440000",
+    "feedback_type": "positive",
+    "reason": "Very helpful and accurate response"
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://api.example.com/feedback",
+    headers={
+        "Authorization": "Bearer YOUR_TOKEN",
+        "Content-Type": "application/json"
+    },
+    json={
+        "message_id": "550e8400-e29b-41d4-a716-446655440000",
+        "feedback_type": "positive",
+        "reason": "Very helpful and accurate response"
+    }
+)
+
+feedback = response.json()
+print(f"Feedback submitted with status: {feedback['status']}")
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.example.com/feedback', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_TOKEN',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    message_id: '550e8400-e29b-41d4-a716-446655440000',
+    feedback_type: 'positive',
+    reason: 'Very helpful and accurate response'
+  })
+});
+
+const feedback = await response.json();
+console.log(`Feedback submitted with status: ${feedback.status}`);
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "message_id": "550e8400-e29b-41d4-a716-446655440000",
+  "user_id": "123e4567-e89b-12d3-a456-426614174000",
+  "feedback_type": "positive",
+  "reason": "Very helpful and accurate response",
+  "status": "auto_approved",
+  "reviewed_by": null,
+  "reviewed_at": null,
+  "created_at": "2026-03-01T10:30:00Z"
+}
+```
+
+<Info>
+If auto-approval is enabled for this feedback type, the status will be `auto_approved` and a golden example is automatically created in the background.
+</Info>
+
+---
+
+## Get Feedback for Message
+
+<api method="GET" endpoint="/feedback/message/{message_id}" auth="required">
+Retrieve the current user's feedback for a specific message.
+</api>
+
+### Path Parameters
+
+<ParamField path="message_id" type="string" required>
+  ID of the message to get feedback for
+</ParamField>
+
+### Response
+
+Returns a `FeedbackResponse` object if feedback exists, or `null` if the user hasn't provided feedback for this message.
+
+<ResponseField name="id" type="string">
+  Unique identifier for the feedback
+</ResponseField>
+
+<ResponseField name="message_id" type="string">
+  ID of the message that was rated
+</ResponseField>
+
+<ResponseField name="user_id" type="string">
+  ID of the user who submitted the feedback
+</ResponseField>
+
+<ResponseField name="feedback_type" type="string">
+  Type of feedback: `positive` or `negative`
+</ResponseField>
+
+<ResponseField name="reason" type="string | null">
+  The reason provided for the feedback
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status: `pending`, `auto_approved`, `reviewed`, or `dismissed`
+</ResponseField>
+
+<ResponseField name="reviewed_by" type="string | null">
+  ID of the admin who reviewed the feedback
+</ResponseField>
+
+<ResponseField name="reviewed_at" type="datetime | null">
+  Timestamp when the feedback was reviewed
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  Timestamp when the feedback was created
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET https://api.example.com/feedback/message/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```python Python
+import requests
+
+message_id = "550e8400-e29b-41d4-a716-446655440000"
+response = requests.get(
+    f"https://api.example.com/feedback/message/{message_id}",
+    headers={"Authorization": "Bearer YOUR_TOKEN"}
+)
+
+feedback = response.json()
+if feedback:
+    print(f"User rated this message as: {feedback['feedback_type']}")
+else:
+    print("No feedback provided for this message")
+```
+
+```javascript JavaScript
+const messageId = '550e8400-e29b-41d4-a716-446655440000';
+const response = await fetch(
+  `https://api.example.com/feedback/message/${messageId}`,
+  {
+    headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
+  }
+);
+
+const feedback = await response.json();
+if (feedback) {
+  console.log(`User rated this message as: ${feedback.feedback_type}`);
+} else {
+  console.log('No feedback provided for this message');
+}
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "message_id": "550e8400-e29b-41d4-a716-446655440000",
+  "user_id": "123e4567-e89b-12d3-a456-426614174000",
+  "feedback_type": "positive",
+  "reason": "Very helpful and accurate response",
+  "status": "auto_approved",
+  "reviewed_by": null,
+  "reviewed_at": null,
+  "created_at": "2026-03-01T10:30:00Z"
+}
+```
+
+### Example Response (No Feedback)
+
+```json
+null
+```
+
+---
+
+## Error Responses
+
+### 400 Bad Request
+
+Returned when the request is invalid:
+
+```json
+{
+  "detail": "Invalid feedback type. Must be 'positive' or 'negative'"
+}
+```
+
+### 401 Unauthorized
+
+Returned when authentication is missing or invalid:
+
+```json
+{
+  "detail": "Not authenticated"
+}
+```
+
+### 404 Not Found
+
+Returned when the message doesn't exist:
+
+```json
+{
+  "detail": "Message not found"
+}
+```
+
+### 500 Internal Server Error
+
+Returned when an unexpected error occurs:
+
+```json
+{
+  "detail": "Failed to submit feedback"
+}
+```
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Check Existing Feedback" icon="magnifying-glass">
+    Use the GET endpoint to check if the user has already provided feedback before showing the feedback UI.
+  </Card>
+  
+  <Card title="Provide Context" icon="message">
+    Include a meaningful reason when submitting negative feedback to help improve responses.
+  </Card>
+  
+  <Card title="Handle Auto-Approval" icon="check">
+    Be aware that positive feedback may be auto-approved based on settings, immediately contributing to model improvement.
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation">
+    Implement proper error handling for network failures and validation errors.
+  </Card>
+</CardGroup>
+
+---
+
+## Auto-Approval System
+
+The auto-approval system allows organizations to automatically create golden examples from user feedback:
+
+- **Positive Feedback**: When auto-approved, the original response becomes a golden example
+- **Negative Feedback**: Can be auto-approved with admin review for the corrected response
+- **Settings Control**: Admins can configure auto-approval per feedback type via [settings endpoints](/api/feedback/manage#get-feedback-settings)
+
+<Tip>
+Enable auto-approval for positive feedback to build your golden examples dataset automatically as users interact with the assistant.
+</Tip>

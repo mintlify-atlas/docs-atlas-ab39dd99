@@ -1,0 +1,579 @@
+---
+title: 'Integrations API'
+description: 'Manage third-party integrations including ServiceNow, Jira, and other external systems'
+---
+
+The Integrations API allows administrators to configure, manage, and synchronize data from external service management platforms. All endpoints require appropriate admin permissions.
+
+## Authentication
+
+All integration endpoints require authentication and specific permissions:
+- `integration.view` - View integrations
+- `integration.create` - Create integrations
+- `integration.edit` - Update integrations
+- `integration.delete` - Delete integrations
+- `integration.sync` - Trigger manual synchronization
+
+## Authentication Types
+
+Integrations support multiple authentication methods:
+
+- **basic_auth** - Username and password authentication
+- **api_token** - API token or key-based authentication
+- **oauth2** - OAuth 2.0 authentication flow
+
+## Integration Object
+
+<ResponseField name="id" type="string" required>
+  Unique identifier for the integration (UUID)
+</ResponseField>
+
+<ResponseField name="service_name" type="string" required>
+  Name of the external service (e.g., "ServiceNow", "Jira")
+</ResponseField>
+
+<ResponseField name="auth_type" type="string" required>
+  Authentication type: `basic_auth`, `api_token`, or `oauth2`
+</ResponseField>
+
+<ResponseField name="config" type="object" required>
+  Integration-specific configuration. Sensitive fields (passwords, tokens, secrets) are masked with `********` in API responses.
+  
+  **ServiceNow Example:**
+  ```json
+  {
+    "url": "https://instance.service-now.com",
+    "username": "admin",
+    "password": "********",
+    "lastSynced": "2026-03-01T10:30:00Z"
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean" required>
+  Whether the integration is currently active and enabled
+</ResponseField>
+
+<ResponseField name="last_synced_at" type="string">
+  ISO 8601 timestamp of the last successful sync
+</ResponseField>
+
+<ResponseField name="last_sync_status" type="string">
+  Status of the last sync attempt: `success` or `error`
+</ResponseField>
+
+<ResponseField name="last_sync_error" type="string">
+  Error message from the last sync attempt (if failed)
+</ResponseField>
+
+<ResponseField name="updated_at" type="string" required>
+  ISO 8601 timestamp of the last update
+</ResponseField>
+
+<ResponseField name="user_id" type="string">
+  UUID of the user who created the integration
+</ResponseField>
+
+---
+
+## List All Integrations
+
+<api-endpoint openapi="/integrations/all" method="GET" summary="Retrieve all configured integrations" />
+
+Returns a list of all integrations in the system. Sensitive configuration fields are automatically masked in responses.
+
+**Required Permission:** `integration.view`
+
+### Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the request was successful
+</ResponseField>
+
+<ResponseField name="integrations" type="array" required>
+  Array of integration objects
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Error message (only present if success is false)
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X GET https://api.example.com/integrations/all \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "integrations": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "service_name": "ServiceNow",
+      "auth_type": "basic_auth",
+      "config": {
+        "url": "https://dev12345.service-now.com",
+        "username": "admin",
+        "password": "********",
+        "lastSynced": "2026-03-01T10:30:00Z"
+      },
+      "is_active": true,
+      "last_synced_at": "2026-03-01T10:30:00Z",
+      "last_sync_status": "success",
+      "last_sync_error": null,
+      "updated_at": "2026-03-01T10:30:00Z",
+      "user_id": "123e4567-e89b-12d3-a456-426614174000"
+    }
+  ]
+}
+```
+
+---
+
+## Get Integration by ID
+
+<api-endpoint openapi="/integrations/id/{integration_id}" method="GET" summary="Retrieve a specific integration by its ID" />
+
+Fetches detailed information about a single integration.
+
+**Required Permission:** `integration.view`
+
+### Path Parameters
+
+<ParamField path="integration_id" type="string" required>
+  The UUID of the integration to retrieve
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the request was successful
+</ResponseField>
+
+<ResponseField name="integration" type="object">
+  The integration object (only present if found)
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Error or status message
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X GET https://api.example.com/integrations/id/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "integration": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "service_name": "ServiceNow",
+    "auth_type": "basic_auth",
+    "config": {
+      "url": "https://dev12345.service-now.com",
+      "username": "admin",
+      "password": "********"
+    },
+    "is_active": true,
+    "last_synced_at": "2026-03-01T10:30:00Z",
+    "last_sync_status": "success",
+    "last_sync_error": null,
+    "updated_at": "2026-03-01T10:30:00Z",
+    "user_id": "123e4567-e89b-12d3-a456-426614174000"
+  }
+}
+```
+
+### Error Response
+
+```json
+{
+  "success": false,
+  "message": "Integration not found"
+}
+```
+
+---
+
+## Create Integration
+
+<api-endpoint openapi="/integrations/create" method="POST" summary="Create a new integration" />
+
+Creates a new integration configuration. The authenticated user will be associated with the integration.
+
+**Required Permission:** `integration.create`
+
+### Request Body
+
+<ParamField body="service_name" type="string" required>
+  Name of the external service (e.g., "ServiceNow", "Jira", "GitHub")
+</ParamField>
+
+<ParamField body="auth_type" type="string" required>
+  Authentication method: `basic_auth`, `api_token`, or `oauth2`
+</ParamField>
+
+<ParamField body="config" type="object" required>
+  Service-specific configuration object. Required fields vary by service.
+  
+  **ServiceNow config:**
+  - `url` (string, required) - ServiceNow instance URL
+  - `username` (string, required) - ServiceNow username
+  - `password` (string, required) - ServiceNow password
+  - `lastSynced` (string, optional) - Last sync timestamp
+</ParamField>
+
+<ParamField body="is_active" type="boolean" required>
+  Set to `true` to enable the integration immediately
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the creation was successful
+</ResponseField>
+
+<ResponseField name="integration" type="object">
+  The created integration object (with sensitive fields masked)
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Error message if creation failed
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.example.com/integrations/create \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service_name": "ServiceNow",
+    "auth_type": "basic_auth",
+    "config": {
+      "url": "https://dev12345.service-now.com",
+      "username": "admin",
+      "password": "your_password"
+    },
+    "is_active": true
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "integration": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "service_name": "ServiceNow",
+    "auth_type": "basic_auth",
+    "config": {
+      "url": "https://dev12345.service-now.com",
+      "username": "admin",
+      "password": "********"
+    },
+    "is_active": true,
+    "last_synced_at": null,
+    "last_sync_status": null,
+    "last_sync_error": null,
+    "updated_at": "2026-03-01T10:30:00Z",
+    "user_id": "123e4567-e89b-12d3-a456-426614174000"
+  }
+}
+```
+
+---
+
+## Update Integration
+
+<api-endpoint openapi="/integrations/update/{integration_id}" method="PUT" summary="Update an existing integration" />
+
+Updates the configuration of an existing integration. All fields from the request body will replace the current values.
+
+**Required Permission:** `integration.edit`
+
+### Path Parameters
+
+<ParamField path="integration_id" type="string" required>
+  The UUID of the integration to update
+</ParamField>
+
+### Request Body
+
+<ParamField body="service_name" type="string" required>
+  Name of the external service
+</ParamField>
+
+<ParamField body="auth_type" type="string" required>
+  Authentication method: `basic_auth`, `api_token`, or `oauth2`
+</ParamField>
+
+<ParamField body="config" type="object" required>
+  Updated configuration object. This replaces the entire config.
+</ParamField>
+
+<ParamField body="is_active" type="boolean" required>
+  Enable or disable the integration
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the update was successful
+</ResponseField>
+
+<ResponseField name="integration" type="object">
+  The updated integration object
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Error or status message
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X PUT https://api.example.com/integrations/update/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service_name": "ServiceNow Production",
+    "auth_type": "basic_auth",
+    "config": {
+      "url": "https://prod.service-now.com",
+      "username": "admin",
+      "password": "new_password"
+    },
+    "is_active": true
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "integration": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "service_name": "ServiceNow Production",
+    "auth_type": "basic_auth",
+    "config": {
+      "url": "https://prod.service-now.com",
+      "username": "admin",
+      "password": "********"
+    },
+    "is_active": true,
+    "last_synced_at": "2026-03-01T10:30:00Z",
+    "last_sync_status": "success",
+    "last_sync_error": null,
+    "updated_at": "2026-03-01T11:45:00Z",
+    "user_id": "123e4567-e89b-12d3-a456-426614174000"
+  }
+}
+```
+
+---
+
+## Delete Integration
+
+<api-endpoint openapi="/integrations/delete/{integration_id}" method="DELETE" summary="Delete an integration" />
+
+Permanently removes an integration and its configuration. This action cannot be undone.
+
+**Required Permission:** `integration.delete`
+
+### Path Parameters
+
+<ParamField path="integration_id" type="string" required>
+  The UUID of the integration to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if the deletion was successful
+</ResponseField>
+
+<ResponseField name="message" type="string" required>
+  Confirmation or error message
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X DELETE https://api.example.com/integrations/delete/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "message": "Integration deleted successfully"
+}
+```
+
+### Error Response
+
+```json
+{
+  "success": false,
+  "message": "Integration not found"
+}
+```
+
+---
+
+## Trigger Manual Sync
+
+<api-endpoint openapi="/integrations/sync/{integration_id}" method="POST" summary="Trigger a manual synchronization of integration data" />
+
+Initiates a manual sync operation for a ServiceNow integration. This endpoint returns a Server-Sent Events (SSE) stream that provides real-time progress updates.
+
+**Required Permission:** `integration.sync`
+
+### Path Parameters
+
+<ParamField path="integration_id" type="string" required>
+  The UUID of the integration to synchronize
+</ParamField>
+
+### Response
+
+This endpoint returns a `text/event-stream` response with the following event types:
+
+#### Event: progress
+
+Emitted periodically during the sync operation.
+
+<ResponseField name="batch" type="number">
+  Current batch number being processed
+</ResponseField>
+
+<ResponseField name="totalBatches" type="number">
+  Total number of batches to process
+</ResponseField>
+
+<ResponseField name="totalIncidents" type="number">
+  Total number of incidents being synced
+</ResponseField>
+
+<ResponseField name="incidents" type="array">
+  Array of incident IDs in the current batch
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable progress message
+</ResponseField>
+
+#### Event: complete
+
+Emitted when the sync operation completes successfully.
+
+<ResponseField name="success" type="boolean">
+  Always `true` for complete events
+</ResponseField>
+
+<ResponseField name="integration" type="object">
+  Updated integration object with new sync timestamps
+</ResponseField>
+
+<ResponseField name="stats" type="object">
+  Statistics about the sync operation:
+  - `added` (number) - Number of new incidents added
+  - `total` (number) - Total incidents processed
+  - `last_synced` (string) - New last sync timestamp
+</ResponseField>
+
+#### Event: error
+
+Emitted if the sync operation fails.
+
+<ResponseField name="success" type="boolean">
+  Always `false` for error events
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Error description
+</ResponseField>
+
+### Sync Workflow
+
+1. **Validation** - Verifies integration exists and has required config (url, username, password)
+2. **Fetch** - Retrieves new incidents from ServiceNow since last sync
+3. **Store** - Saves raw incident data to local JSON file
+4. **Ingest** - Processes incidents in batches (5 per batch) and stores in knowledge base
+5. **Version** - Creates a versioned dataset for the sync operation
+6. **Update** - Updates integration with sync status and timestamp
+
+### Example Request
+
+```bash
+curl -X POST https://api.example.com/integrations/sync/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Accept: text/event-stream"
+```
+
+### Example Response Stream
+
+```
+event: progress
+data: {"batch":0,"totalBatches":0,"message":"Fetching incidents from ServiceNow..."}
+
+event: progress
+data: {"batch":0,"totalBatches":4,"totalIncidents":18,"message":"Ingesting 18 incidents in 4 batch(es)..."}
+
+event: progress
+data: {"batch":1,"totalBatches":4,"incidents":["INC001","INC002","INC003","INC004","INC005"],"totalIncidents":18,"message":"Batch 1 of 4 processed (5 incidents)"}
+
+event: progress
+data: {"batch":2,"totalBatches":4,"incidents":["INC006","INC007","INC008","INC009","INC010"],"totalIncidents":18,"message":"Batch 2 of 4 processed (5 incidents)"}
+
+event: progress
+data: {"batch":3,"totalBatches":4,"incidents":["INC011","INC012","INC013","INC014","INC015"],"totalIncidents":18,"message":"Batch 3 of 4 processed (5 incidents)"}
+
+event: progress
+data: {"batch":4,"totalBatches":4,"incidents":["INC016","INC017","INC018"],"totalIncidents":18,"message":"Batch 4 of 4 processed (3 incidents)"}
+
+event: complete
+data: {"success":true,"integration":{"id":"550e8400-e29b-41d4-a716-446655440000","service_name":"ServiceNow","auth_type":"basic_auth","config":{"url":"https://dev12345.service-now.com","username":"admin","password":"********","lastSynced":"2026-03-01T11:45:00Z"},"is_active":true,"last_synced_at":"2026-03-01T11:45:00Z","last_sync_status":"success","last_sync_error":null,"updated_at":"2026-03-01T11:45:00Z","user_id":"123e4567-e89b-12d3-a456-426614174000"},"stats":{"added":18,"total":18,"last_synced":"2026-03-01T11:45:00Z"}}
+```
+
+### Error Cases
+
+**Integration Not Found:**
+```
+event: error
+data: {"success":false,"message":"Integration not found"}
+```
+
+**Missing Configuration:**
+```
+event: error
+data: {"success":false,"message":"Missing ServiceNow configuration (url, username, password)"}
+```
+
+**Sync Failed:**
+```
+event: error
+data: {"success":false,"message":"Failed to fetch incidents from ServiceNow: Connection timeout"}
+```
+
+### Notes
+
+- The sync operation processes incidents in batches of 5 to provide granular progress updates
+- All synced incidents are stored in a versioned dataset for audit and rollback capabilities
+- The integration's `last_synced_at` timestamp is only updated on successful completion
+- If no new incidents are found since the last sync, the operation completes without ingestion
+- Raw incident data is saved to `src/data/incidentspulledfromsnow.json` for debugging

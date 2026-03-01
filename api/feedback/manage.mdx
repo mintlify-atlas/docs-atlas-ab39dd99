@@ -1,0 +1,885 @@
+---
+title: 'Manage Feedback'
+description: 'Admin endpoints for reviewing and managing user feedback'
+---
+
+## Overview
+
+The feedback management endpoints allow administrators to review user feedback, create golden examples, manage feedback settings, and generate AI-suggested improvements. These endpoints require the `feedback.view` or `feedback.manage` permissions.
+
+## Feedback Workflow
+
+1. **Review** - List and filter feedback submissions
+2. **Analyze** - View detailed context including original query and response
+3. **Act** - Resolve (create golden example), dismiss, or delete feedback
+4. **Generate** - Use AI to suggest improved responses for negative feedback
+5. **Configure** - Manage auto-approval settings
+
+---
+
+## List All Feedback
+
+<api method="GET" endpoint="/feedback/admin/list" auth="required">
+List all feedback with message context for admin review.
+</api>
+
+<Info>
+Requires `feedback.view` permission
+</Info>
+
+### Query Parameters
+
+<ParamField query="limit" type="integer" default="20">
+  Number of items to return (1-100)
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of items to skip for pagination
+</ParamField>
+
+<ParamField query="status" type="string">
+  Filter by status: `pending`, `auto_approved`, `reviewed`, or `dismissed`
+</ParamField>
+
+<ParamField query="type" type="string">
+  Filter by feedback type: `positive` or `negative`
+</ParamField>
+
+<ParamField query="search" type="string">
+  Search in query, response, or reason text
+</ParamField>
+
+### Response
+
+<ResponseField name="items" type="array">
+  Array of feedback items with full context
+  
+  <Expandable title="FeedbackWithContext properties">
+    <ResponseField name="id" type="string">
+      Unique identifier for the feedback
+    </ResponseField>
+    
+    <ResponseField name="message_id" type="string">
+      ID of the message that was rated
+    </ResponseField>
+    
+    <ResponseField name="user_id" type="string">
+      ID of the user who submitted feedback
+    </ResponseField>
+    
+    <ResponseField name="user_email" type="string">
+      Email of the user who submitted feedback
+    </ResponseField>
+    
+    <ResponseField name="feedback_type" type="string">
+      Type: `positive` or `negative`
+    </ResponseField>
+    
+    <ResponseField name="reason" type="string | null">
+      User's reason for the feedback
+    </ResponseField>
+    
+    <ResponseField name="status" type="string">
+      Status: `pending`, `auto_approved`, `reviewed`, or `dismissed`
+    </ResponseField>
+    
+    <ResponseField name="reviewed_by" type="string | null">
+      ID of the admin who reviewed
+    </ResponseField>
+    
+    <ResponseField name="reviewer_email" type="string | null">
+      Email of the admin who reviewed
+    </ResponseField>
+    
+    <ResponseField name="reviewed_at" type="datetime | null">
+      When the feedback was reviewed
+    </ResponseField>
+    
+    <ResponseField name="created_at" type="datetime">
+      When the feedback was created
+    </ResponseField>
+    
+    <ResponseField name="original_query" type="string">
+      The user's original question
+    </ResponseField>
+    
+    <ResponseField name="original_response" type="string">
+      The assistant's original response
+    </ResponseField>
+    
+    <ResponseField name="chat_id" type="string">
+      ID of the chat session
+    </ResponseField>
+    
+    <ResponseField name="has_golden_example" type="boolean">
+      Whether a golden example exists for this feedback
+    </ResponseField>
+    
+    <ResponseField name="golden_example_id" type="string | null">
+      ID of the associated golden example
+    </ResponseField>
+    
+    <ResponseField name="golden_response" type="string | null">
+      The golden response if it exists
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="total" type="integer">
+  Total number of feedback items matching filters
+</ResponseField>
+
+<ResponseField name="limit" type="integer">
+  Number of items returned
+</ResponseField>
+
+<ResponseField name="offset" type="integer">
+  Number of items skipped
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://api.example.com/feedback/admin/list?status=pending&type=negative&limit=10" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    "https://api.example.com/feedback/admin/list",
+    headers={"Authorization": "Bearer YOUR_TOKEN"},
+    params={
+        "status": "pending",
+        "type": "negative",
+        "limit": 10
+    }
+)
+
+data = response.json()
+print(f"Found {data['total']} pending negative feedback items")
+for item in data['items']:
+    print(f"- {item['original_query'][:50]}... ({item['reason']})")
+```
+
+```javascript JavaScript
+const params = new URLSearchParams({
+  status: 'pending',
+  type: 'negative',
+  limit: '10'
+});
+
+const response = await fetch(
+  `https://api.example.com/feedback/admin/list?${params}`,
+  { headers: { 'Authorization': 'Bearer YOUR_TOKEN' } }
+);
+
+const data = await response.json();
+console.log(`Found ${data.total} pending negative feedback items`);
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "items": [
+    {
+      "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "message_id": "550e8400-e29b-41d4-a716-446655440000",
+      "user_id": "123e4567-e89b-12d3-a456-426614174000",
+      "user_email": "user@example.com",
+      "feedback_type": "negative",
+      "reason": "Response was inaccurate",
+      "status": "pending",
+      "reviewed_by": null,
+      "reviewer_email": null,
+      "reviewed_at": null,
+      "created_at": "2026-03-01T10:30:00Z",
+      "original_query": "What is the incident resolution time?",
+      "original_response": "The average resolution time is 2 hours.",
+      "chat_id": "chat-123",
+      "has_golden_example": false,
+      "golden_example_id": null,
+      "golden_response": null
+    }
+  ],
+  "total": 1,
+  "limit": 10,
+  "offset": 0
+}
+```
+
+---
+
+## Get Feedback Statistics
+
+<api method="GET" endpoint="/feedback/admin/stats" auth="required">
+Get aggregate statistics about feedback submissions.
+</api>
+
+<Info>
+Requires `feedback.view` permission
+</Info>
+
+### Response
+
+<ResponseField name="total_feedback" type="integer">
+  Total number of feedback submissions
+</ResponseField>
+
+<ResponseField name="positive_count" type="integer">
+  Number of positive feedback items
+</ResponseField>
+
+<ResponseField name="negative_count" type="integer">
+  Number of negative feedback items
+</ResponseField>
+
+<ResponseField name="pending_count" type="integer">
+  Number of pending items awaiting review
+</ResponseField>
+
+<ResponseField name="auto_approved_count" type="integer">
+  Number of auto-approved items
+</ResponseField>
+
+<ResponseField name="reviewed_count" type="integer">
+  Number of manually reviewed items
+</ResponseField>
+
+<ResponseField name="dismissed_count" type="integer">
+  Number of dismissed items
+</ResponseField>
+
+<ResponseField name="golden_examples_count" type="integer">
+  Total number of golden examples created from feedback
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X GET https://api.example.com/feedback/admin/stats \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "total_feedback": 1247,
+  "positive_count": 892,
+  "negative_count": 355,
+  "pending_count": 42,
+  "auto_approved_count": 850,
+  "reviewed_count": 320,
+  "dismissed_count": 35,
+  "golden_examples_count": 1170
+}
+```
+
+---
+
+## Get Feedback Details
+
+<api method="GET" endpoint="/feedback/admin/{feedback_id}" auth="required">
+Get detailed feedback with full message context.
+</api>
+
+<Info>
+Requires `feedback.view` permission
+</Info>
+
+### Path Parameters
+
+<ParamField path="feedback_id" type="string" required>
+  ID of the feedback to retrieve
+</ParamField>
+
+### Response
+
+Returns a `FeedbackWithContext` object with all details.
+
+### Example Request
+
+```bash cURL
+curl -X GET https://api.example.com/feedback/admin/7c9e6679-7425-40de-944b-e07fc1f90ae7 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+---
+
+## Resolve Feedback
+
+<api method="POST" endpoint="/feedback/admin/{feedback_id}/resolve" auth="required">
+Resolve feedback by creating a golden example.
+</api>
+
+<Info>
+Requires `feedback.manage` permission
+</Info>
+
+### Path Parameters
+
+<ParamField path="feedback_id" type="string" required>
+  ID of the feedback to resolve
+</ParamField>
+
+### Request Body
+
+<ParamField body="golden_response" type="string">
+  The ideal response. 
+  
+  - **For positive feedback**: Optional. If not provided, uses the original response.
+  - **For negative feedback**: Required. Must provide the corrected response.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="feedback_id" type="string">
+  ID of the resolved feedback
+</ResponseField>
+
+<ResponseField name="golden_example_id" type="string">
+  ID of the created golden example
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  New status: `reviewed`
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL (Positive)
+curl -X POST https://api.example.com/feedback/admin/7c9e6679-7425-40de-944b-e07fc1f90ae7/resolve \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+```bash cURL (Negative)
+curl -X POST https://api.example.com/feedback/admin/7c9e6679-7425-40de-944b-e07fc1f90ae7/resolve \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "golden_response": "The incident resolution time varies by severity: P0 (1 hour), P1 (4 hours), P2 (24 hours), P3 (72 hours)."
+  }'
+```
+
+```python Python
+import requests
+
+# Resolve negative feedback with corrected response
+response = requests.post(
+    "https://api.example.com/feedback/admin/7c9e6679-7425-40de-944b-e07fc1f90ae7/resolve",
+    headers={
+        "Authorization": "Bearer YOUR_TOKEN",
+        "Content-Type": "application/json"
+    },
+    json={
+        "golden_response": "The incident resolution time varies by severity: P0 (1 hour), P1 (4 hours), P2 (24 hours), P3 (72 hours)."
+    }
+)
+
+result = response.json()
+print(f"Created golden example: {result['golden_example_id']}")
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "message": "Feedback resolved successfully",
+  "feedback_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "golden_example_id": "8d8f7780-8536-51ef-b827-f18ed2091bf8",
+  "status": "reviewed"
+}
+```
+
+---
+
+## Dismiss Feedback
+
+<api method="POST" endpoint="/feedback/admin/{feedback_id}/dismiss" auth="required">
+Dismiss feedback without creating a golden example.
+</api>
+
+<Info>
+Requires `feedback.manage` permission
+</Info>
+
+### Path Parameters
+
+<ParamField path="feedback_id" type="string" required>
+  ID of the feedback to dismiss
+</ParamField>
+
+### Request Body
+
+<ParamField body="reason" type="string">
+  Optional reason for dismissal
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="feedback_id" type="string">
+  ID of the dismissed feedback
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  New status: `dismissed`
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X POST https://api.example.com/feedback/admin/7c9e6679-7425-40de-944b-e07fc1f90ae7/dismiss \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "User error - question was unclear"
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "message": "Feedback dismissed",
+  "feedback_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "status": "dismissed"
+}
+```
+
+---
+
+## Restore Feedback
+
+<api method="POST" endpoint="/feedback/admin/{feedback_id}/restore" auth="required">
+Restore dismissed feedback back to pending status.
+</api>
+
+<Info>
+Requires `feedback.manage` permission
+</Info>
+
+### Path Parameters
+
+<ParamField path="feedback_id" type="string" required>
+  ID of the feedback to restore
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="feedback_id" type="string">
+  ID of the restored feedback
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  New status: `pending`
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X POST https://api.example.com/feedback/admin/7c9e6679-7425-40de-944b-e07fc1f90ae7/restore \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "message": "Feedback restored to pending",
+  "feedback_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "status": "pending"
+}
+```
+
+---
+
+## Delete Feedback
+
+<api method="DELETE" endpoint="/feedback/admin/{feedback_id}" auth="required">
+Permanently delete feedback and its associated golden example.
+</api>
+
+<Warning>
+This action is permanent and cannot be undone. The associated golden example will also be deleted.
+</Warning>
+
+<Info>
+Requires `feedback.manage` permission
+</Info>
+
+### Path Parameters
+
+<ParamField path="feedback_id" type="string" required>
+  ID of the feedback to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="feedback_id" type="string">
+  ID of the deleted feedback
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X DELETE https://api.example.com/feedback/admin/7c9e6679-7425-40de-944b-e07fc1f90ae7 \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "message": "Feedback deleted successfully",
+  "feedback_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+}
+```
+
+---
+
+## Generate AI Response
+
+<api method="POST" endpoint="/feedback/admin/{feedback_id}/generate-response" auth="required">
+Generate an AI-suggested golden response for negative feedback.
+</api>
+
+<Info>
+Requires `feedback.manage` permission
+</Info>
+
+This endpoint uses the configured LLM with full RAG tool access to generate an improved response based on the feedback context. The AI autonomously decides whether to use additional tools for context.
+
+### Features
+
+- Specialized prompt for response improvement
+- Full access to incident lookup and knowledge base tools
+- Timeout protection (60 seconds)
+- Concurrency control to prevent overload
+
+### Path Parameters
+
+<ParamField path="feedback_id" type="string" required>
+  ID of the feedback to generate a response for
+</ParamField>
+
+### Response
+
+<ResponseField name="generated_response" type="string">
+  The AI-generated improved response
+</ResponseField>
+
+<ResponseField name="tool_calls_made" type="integer">
+  Number of RAG tool calls made during generation
+</ResponseField>
+
+<ResponseField name="generation_time_ms" type="integer">
+  Time taken to generate the response in milliseconds
+</ResponseField>
+
+<ResponseField name="success" type="boolean">
+  Whether generation was successful
+</ResponseField>
+
+<ResponseField name="error" type="string | null">
+  Error message if generation failed
+</ResponseField>
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://api.example.com/feedback/admin/7c9e6679-7425-40de-944b-e07fc1f90ae7/generate-response \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "https://api.example.com/feedback/admin/7c9e6679-7425-40de-944b-e07fc1f90ae7/generate-response",
+    headers={"Authorization": "Bearer YOUR_TOKEN"}
+)
+
+result = response.json()
+if result['success']:
+    print(f"Generated response ({result['tool_calls_made']} tool calls):")
+    print(result['generated_response'])
+    print(f"\nGeneration time: {result['generation_time_ms']}ms")
+else:
+    print(f"Generation failed: {result['error']}")
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'https://api.example.com/feedback/admin/7c9e6679-7425-40de-944b-e07fc1f90ae7/generate-response',
+  {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer YOUR_TOKEN' }
+  }
+);
+
+const result = await response.json();
+if (result.success) {
+  console.log(`Generated response (${result.tool_calls_made} tool calls):`);
+  console.log(result.generated_response);
+}
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "generated_response": "The incident resolution time varies based on severity level:\n\n- P0 (Critical): 1 hour\n- P1 (High): 4 hours\n- P2 (Medium): 24 hours\n- P3 (Low): 72 hours\n\nThese are target resolution times, and actual resolution may vary based on complexity.",
+  "tool_calls_made": 2,
+  "generation_time_ms": 3421,
+  "success": true,
+  "error": null
+}
+```
+
+<Tip>
+Use the generated response as a starting point. You can edit it before resolving the feedback to create the golden example.
+</Tip>
+
+---
+
+## Get Feedback Settings
+
+<api method="GET" endpoint="/feedback/admin/settings" auth="required">
+Get current feedback auto-approval settings.
+</api>
+
+<Info>
+Requires `feedback.manage` permission
+</Info>
+
+### Response
+
+<ResponseField name="auto_approve_positive" type="boolean">
+  Whether positive feedback is automatically approved
+</ResponseField>
+
+<ResponseField name="auto_approve_negative" type="boolean">
+  Whether negative feedback is automatically approved
+</ResponseField>
+
+<ResponseField name="require_reason_positive" type="boolean">
+  Whether a reason is required for positive feedback
+</ResponseField>
+
+<ResponseField name="require_reason_negative" type="boolean">
+  Whether a reason is required for negative feedback
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X GET https://api.example.com/feedback/admin/settings \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "auto_approve_positive": true,
+  "auto_approve_negative": false,
+  "require_reason_positive": false,
+  "require_reason_negative": true
+}
+```
+
+---
+
+## Update Feedback Settings
+
+<api method="PUT" endpoint="/feedback/admin/settings" auth="required">
+Update feedback auto-approval settings.
+</api>
+
+<Info>
+Requires `feedback.manage` permission
+</Info>
+
+### Request Body
+
+All fields are optional. Only provided fields will be updated.
+
+<ParamField body="auto_approve_positive" type="boolean">
+  Enable/disable auto-approval for positive feedback
+</ParamField>
+
+<ParamField body="auto_approve_negative" type="boolean">
+  Enable/disable auto-approval for negative feedback
+</ParamField>
+
+<ParamField body="require_reason_positive" type="boolean">
+  Require reason for positive feedback
+</ParamField>
+
+<ParamField body="require_reason_negative" type="boolean">
+  Require reason for negative feedback
+</ParamField>
+
+### Response
+
+Returns the updated `FeedbackSettingsResponse`.
+
+### Example Request
+
+<CodeGroup>
+```bash cURL
+curl -X PUT https://api.example.com/feedback/admin/settings \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "auto_approve_positive": true,
+    "auto_approve_negative": false,
+    "require_reason_negative": true
+  }'
+```
+
+```python Python
+import requests
+
+response = requests.put(
+    "https://api.example.com/feedback/admin/settings",
+    headers={
+        "Authorization": "Bearer YOUR_TOKEN",
+        "Content-Type": "application/json"
+    },
+    json={
+        "auto_approve_positive": True,
+        "auto_approve_negative": False,
+        "require_reason_negative": True
+    }
+)
+
+settings = response.json()
+print(f"Settings updated: {settings}")
+```
+
+```javascript JavaScript
+const response = await fetch(
+  'https://api.example.com/feedback/admin/settings',
+  {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'Bearer YOUR_TOKEN',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      auto_approve_positive: true,
+      auto_approve_negative: false,
+      require_reason_negative: true
+    })
+  }
+);
+
+const settings = await response.json();
+console.log('Settings updated:', settings);
+```
+</CodeGroup>
+
+### Example Response
+
+```json
+{
+  "auto_approve_positive": true,
+  "auto_approve_negative": false,
+  "require_reason_positive": false,
+  "require_reason_negative": true
+}
+```
+
+---
+
+## Common Error Responses
+
+### 400 Bad Request
+
+```json
+{
+  "detail": "Negative feedback requires a golden response to resolve"
+}
+```
+
+### 401 Unauthorized
+
+```json
+{
+  "detail": "Not authenticated"
+}
+```
+
+### 403 Forbidden
+
+```json
+{
+  "detail": "Insufficient permissions. Required: feedback.manage"
+}
+```
+
+### 404 Not Found
+
+```json
+{
+  "detail": "Feedback not found"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "detail": "Failed to generate response: Timeout after 60 seconds"
+}
+```
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Filter Efficiently" icon="filter">
+    Use status and type filters to prioritize review of pending negative feedback.
+  </Card>
+  
+  <Card title="Use AI Generation" icon="wand-magic-sparkles">
+    For negative feedback, use the generate-response endpoint to get AI-suggested improvements before resolving.
+  </Card>
+  
+  <Card title="Enable Auto-Approval" icon="bolt">
+    Enable auto-approval for positive feedback to build golden examples automatically.
+  </Card>
+  
+  <Card title="Review Regularly" icon="calendar-check">
+    Set up a regular review cadence for pending feedback to maintain response quality.
+  </Card>
+</CardGroup>
