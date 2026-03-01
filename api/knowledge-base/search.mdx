@@ -1,0 +1,199 @@
+---
+title: "Vector Search"
+description: "Search and retrieve incidents from the knowledge base using vector similarity"
+---
+
+The knowledge base uses vector embeddings and semantic search to find relevant incidents based on natural language queries. All incidents are embedded using the `all-MiniLM-L6-v2` model and stored in Qdrant.
+
+<Note>
+Search functionality is implemented in the copilot service layer. The knowledge base router focuses on data management. For search capabilities, incidents are retrieved from Qdrant using the LangChain integration with vector similarity search.
+</Note>
+
+## How Search Works
+
+### Embedding Model
+
+Incidents are embedded using HuggingFace's `all-MiniLM-L6-v2` model:
+- **Embedding size**: 384 dimensions
+- **Distance metric**: Cosine similarity
+- **Normalization**: Embeddings are normalized for consistent similarity scores
+
+### Document Chunking
+
+Long incident descriptions are split into chunks to improve retrieval accuracy:
+- **Chunk size**: 1000 characters
+- **Chunk overlap**: 200 characters
+- **Metadata preservation**: Each chunk retains full incident metadata
+
+### Searchable Fields
+
+The following incident metadata fields are indexed and searchable:
+
+<ParamField query="incident_id" type="string">
+  Unique incident identifier
+</ParamField>
+
+<ParamField query="incident_title" type="string">
+  Incident title or summary
+</ParamField>
+
+<ParamField query="impacted_application" type="string">
+  Affected application or service
+</ParamField>
+
+<ParamField query="root_cause" type="string">
+  Root cause analysis
+</ParamField>
+
+<ParamField query="mitigation" type="string">
+  Mitigation and resolution steps
+</ParamField>
+
+<ParamField query="accountable_party" type="string">
+  Team or person responsible
+</ParamField>
+
+<ParamField query="source_system" type="string">
+  Source system (e.g., "ServiceNow")
+</ParamField>
+
+<ParamField query="repeat_incident" type="string">
+  Whether this is a repeat incident
+</ParamField>
+
+<ParamField query="opened_at" type="string">
+  ISO 8601 timestamp when incident was opened
+</ParamField>
+
+<ParamField query="updated_at" type="string">
+  ISO 8601 timestamp when incident was last updated
+</ParamField>
+
+## Integration with Qdrant
+
+The knowledge base uses Qdrant as the vector database:
+
+### Collection Configuration
+
+- **Collection name**: `past_issues_v2` (configurable per version)
+- **Vector size**: 384 (matches embedding model)
+- **Distance**: Cosine
+- **Payload structure**: LangChain Document format
+
+### LangChain Document Format
+
+Each vector point in Qdrant follows this structure:
+
+```json
+{
+  "page_content": "Incident Title: Server down\nIncident Description: ...\nAction Taken and Resolution: ...",
+  "metadata": {
+    "incident_id": "INC001",
+    "incident_title": "Server down",
+    "impacted_application": "Payment API",
+    "root_cause": "Memory leak in service",
+    "mitigation": "Restarted service and deployed patch",
+    "accountable_party": "Platform Team",
+    "source_system": "ServiceNow",
+    "repeat_incident": "False",
+    "opened_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-15T14:20:00Z",
+    "chunk_number": 0
+  }
+}
+```
+
+## Example: Using Qdrant Client for Search
+
+While search is typically handled by the copilot service, you can query the vector database directly:
+
+```python
+from qdrant_client import QdrantClient
+from langchain_huggingface import HuggingFaceEmbeddings
+
+# Initialize client and embeddings
+client = QdrantClient(url="http://localhost:6333")
+embeddings = HuggingFaceEmbeddings(
+    model_name="all-MiniLM-L6-v2",
+    model_kwargs={"device": "cpu"},
+    encode_kwargs={"normalize_embeddings": True}
+)
+
+# Embed query
+query = "database connection timeout errors"
+query_vector = embeddings.embed_query(query)
+
+# Search for similar incidents
+results = client.search(
+    collection_name="past_issues_v2",
+    query_vector=query_vector,
+    limit=5,
+    with_payload=True
+)
+
+# Process results
+for result in results:
+    metadata = result.payload["metadata"]
+    print(f"Incident: {metadata['incident_id']}")
+    print(f"Title: {metadata['incident_title']}")
+    print(f"Similarity: {result.score}")
+    print(f"Resolution: {metadata['mitigation']}")
+    print("---")
+```
+
+## Example: Filtering by Metadata
+
+```python
+from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+# Search for payment-related incidents only
+results = client.search(
+    collection_name="past_issues_v2",
+    query_vector=query_vector,
+    query_filter=Filter(
+        must=[
+            FieldCondition(
+                key="metadata.impacted_application",
+                match=MatchValue(value="Payment API")
+            )
+        ]
+    ),
+    limit=5
+)
+```
+
+## Retrieval Performance
+
+### Batch Ingestion
+
+Incidents are ingested in batches for optimal performance:
+- **Default batch size**: 5 incidents per batch
+- **Concurrent operations**: Batches run sequentially with progress tracking
+- **Error handling**: Individual batch failures don't stop the entire ingestion
+
+### Search Performance
+
+- **Typical latency**: Less than 100ms for top-k retrieval (k=5)
+- **Scaling**: Qdrant handles millions of vectors efficiently
+- **Caching**: Embeddings are cached at the model level
+
+## Metadata Parsing
+
+For ServiceNow incidents, the system automatically extracts structured metadata from description fields:
+
+```
+Description format (from ServiceNow):
+Short description text
+Details: {"incident_id": "INC001", "incident_description": "impactedApplication: Payment API\nrootCause: Memory leak\nmitigation: Restarted service"}
+Category: inquiry
+Priority: 3
+```
+
+The parser extracts:
+- `impactedApplication` → `impacted_application`
+- `rootCause` → `root_cause`
+- `mitigation` → `mitigation`
+- `accountableParty` → `accountable_party`
+- `repeatIncident` → `repeat_incident`
+
+This enables rich filtering and retrieval based on incident characteristics.

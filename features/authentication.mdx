@@ -1,0 +1,600 @@
+---
+title: Authentication
+description: Enterprise-grade authentication with OAuth 2.0, JWT tokens, and role-based access control
+---
+
+# Authentication
+
+Support Bot provides enterprise-grade authentication with multiple sign-in options, secure token management, and fine-grained authorization through role-based access control (RBAC).
+
+## Authentication Methods
+
+Support Bot supports multiple authentication providers:
+
+<CardGroup cols={2}>
+  <Card title="Local Auth" icon="key">
+    Email and password authentication with secure bcrypt hashing
+  </Card>
+  
+  <Card title="Google OAuth" icon="google">
+    Sign in with Google Workspace or Gmail accounts
+  </Card>
+  
+  <Card title="GitHub OAuth" icon="github">
+    Authenticate using GitHub accounts for developer teams
+  </Card>
+  
+  <Card title="Microsoft OAuth" icon="microsoft">
+    Azure AD / Microsoft 365 single sign-on integration
+  </Card>
+</CardGroup>
+
+## How Authentication Works
+
+<Steps>
+  <Step title="Choose Authentication Method">
+    Users select their preferred sign-in method:
+    
+    ```bash
+    GET /api/auth/providers
+    ```
+    
+    ```json
+    {
+      "providers": ["local", "google", "github", "microsoft"]
+    }
+    ```
+    
+    Admins can enable or disable each provider in system settings.
+  </Step>
+
+  <Step title="Authenticate">
+    **Local Authentication:**
+    
+    ```bash
+    POST /api/auth/login
+    ```
+    
+    ```json
+    {
+      "email": "user@company.com",
+      "password": "secure-password"
+    }
+    ```
+    
+    **OAuth Authentication:**
+    
+    ```bash
+    # 1. Get authorization URL
+    GET /api/auth/oauth/google
+    
+    # 2. Redirect user to provider
+    # 3. Handle callback with code
+    GET /api/auth/oauth/google/callback?code=xxx&state=yyy
+    ```
+  </Step>
+
+  <Step title="Receive JWT Token">
+    Successful authentication returns a JWT access token:
+    
+    ```json
+    {
+      "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+      "token_type": "bearer",
+      "user_id": "550e8400-e29b-41d4-a716-446655440000",
+      "email": "user@company.com",
+      "role": "Basic User"
+    }
+    ```
+  </Step>
+
+  <Step title="Include Token in Requests">
+    Add the token to all API requests:
+    
+    ```bash
+    Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    ```
+  </Step>
+</Steps>
+
+## JWT Token Structure
+
+Support Bot uses JWT tokens with the following claims:
+
+```json
+{
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "role": "Admin",
+  "auth_provider": "google",
+  "token_version": 1,
+  "jti": "unique-token-id",
+  "exp": 1735689600,
+  "iat": 1733097600
+}
+```
+
+### Token Claims
+
+<AccordionGroup>
+  <Accordion title="user_id - User Identifier">
+    Unique UUID for the authenticated user. Used to look up user details and permissions.
+  </Accordion>
+
+  <Accordion title="role - User Role">
+    The user's assigned role (e.g., "Admin", "Basic User"). Used for basic authorization checks.
+  </Accordion>
+
+  <Accordion title="auth_provider - Authentication Method">
+    Which method was used to authenticate: `local`, `google`, `github`, or `microsoft`.
+  </Accordion>
+
+  <Accordion title="token_version - Global Revocation">
+    Version number that increments when all user tokens need to be invalidated (e.g., password change).
+    
+    ```python
+    # Check token version
+    if token_version != user.token_version:
+        raise HTTPException(status_code=401, detail="Token invalidated")
+    ```
+  </Accordion>
+
+  <Accordion title="jti - Token ID">
+    Unique identifier for this specific token. Used for individual token revocation (logout).
+    
+    ```python
+    # Check if token is revoked
+    revoked = await session.execute(
+        select(RevokedToken).where(RevokedToken.jti == jti)
+    )
+    if revoked.scalar_one_or_none():
+        raise HTTPException(status_code=401, detail="Token revoked")
+    ```
+  </Accordion>
+
+  <Accordion title="exp - Expiration Time">
+    Unix timestamp when the token expires. Configurable via `JWT_EXPIRY` environment variable.
+  </Accordion>
+</AccordionGroup>
+
+## User Registration
+
+### Local Signup
+
+Create a new account with email and password:
+
+```bash
+POST /api/auth/signup
+```
+
+```json
+{
+  "email": "newuser@company.com",
+  "password": "SecureP@ssw0rd123"
+}
+```
+
+The system:
+1. Validates email format and uniqueness
+2. Hashes password with bcrypt
+3. Creates user record with default role
+4. Creates local auth identity
+5. Returns success message
+
+<Note>
+  New users are assigned the "Basic User" role by default. Admins can change roles after registration.
+</Note>
+
+### OAuth Auto-Registration
+
+OAuth users are automatically created on first login:
+
+```python
+async def resolve_oauth_user(profile: dict, session: AsyncSession):
+    # Check if identity exists
+    identity = await get_identity_by_provider(
+        provider=profile["provider"],
+        provider_user_id=profile["provider_user_id"]
+    )
+    
+    if identity:
+        return identity.user
+    
+    # Check if email exists (link to existing account)
+    user = await get_user_by_email(profile["email"])
+    
+    if user:
+        # Link OAuth identity to existing account
+        link_identity(user, profile)
+        return user
+    
+    # Create new user
+    new_user = create_user_from_oauth(profile)
+    return new_user
+```
+
+This allows:
+- Automatic user provisioning
+- Linking multiple OAuth providers to one account
+- Seamless first-time login experience
+
+## OAuth Configuration
+
+### Google OAuth
+
+Configure Google authentication:
+
+```bash
+# Environment variables
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/auth/oauth/google/callback
+```
+
+Create OAuth credentials in [Google Cloud Console](https://console.cloud.google.com/):
+
+1. Create a new project
+2. Enable Google+ API
+3. Create OAuth 2.0 credentials
+4. Add authorized redirect URIs
+
+### GitHub OAuth
+
+Configure GitHub authentication:
+
+```bash
+# Environment variables
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+GITHUB_REDIRECT_URI=http://localhost:8000/api/auth/oauth/github/callback
+```
+
+Create OAuth app in [GitHub Settings](https://github.com/settings/developers):
+
+1. Go to Developer Settings → OAuth Apps
+2. Register new application
+3. Set authorization callback URL
+4. Copy client ID and secret
+
+### Microsoft OAuth
+
+Configure Microsoft / Azure AD authentication:
+
+```bash
+# Environment variables
+MICROSOFT_CLIENT_ID=your-application-id
+MICROSOFT_CLIENT_SECRET=your-client-secret
+MICROSOFT_TENANT_ID=your-tenant-id
+MICROSOFT_REDIRECT_URI=http://localhost:8000/api/auth/oauth/microsoft/callback
+```
+
+Register app in [Azure Portal](https://portal.azure.com/):
+
+1. Go to Azure Active Directory → App registrations
+2. Create new registration
+3. Add redirect URI
+4. Generate client secret
+5. Copy application ID and tenant ID
+
+## Token Management
+
+### Getting Current User
+
+Retrieve authenticated user details:
+
+```bash
+GET /api/auth/me
+Authorization: Bearer {token}
+```
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "user@company.com",
+  "is_active": true,
+  "role": "Admin",
+  "auth_identities": ["local", "google"]
+}
+```
+
+This endpoint:
+- Validates the JWT token
+- Checks if token is revoked
+- Verifies token version
+- Returns user profile with permissions
+
+### Logout
+
+Revoke the current token:
+
+```bash
+POST /api/auth/logout
+Authorization: Bearer {token}
+```
+
+This adds the token's JTI to the revoked tokens table:
+
+```python
+async def logout(current_user: dict = Depends(get_current_user)):
+    jti = current_user.get("jti")
+    exp = current_user.get("exp")
+    
+    if jti and exp:
+        expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
+        await revoke_token(jti, expires_at, session)
+    
+    return {"message": "Logged out successfully"}
+```
+
+The token remains in the revoked table until its expiration time, then is automatically cleaned up.
+
+### Password Management
+
+Update or set password for local authentication:
+
+```bash
+POST /api/auth/password
+Authorization: Bearer {token}
+```
+
+```json
+{
+  "password": "NewSecureP@ssw0rd456"
+}
+```
+
+This:
+1. Creates or updates local auth identity
+2. Hashes new password with bcrypt
+3. Increments token_version (invalidates all tokens)
+4. Forces re-authentication
+
+<Warning>
+  Changing your password invalidates all existing sessions. You'll need to log in again on all devices.
+</Warning>
+
+## Authorization (RBAC)
+
+Support Bot uses role-based access control with granular permissions:
+
+### Permission-Based Authorization
+
+Protect routes with specific permissions:
+
+```python
+from src.api.auth.dependencies import require_permission
+
+@router.get("/admin/settings")
+async def get_settings(
+    current_user=Depends(require_permission("aiml.view"))
+):
+    # Only users with 'aiml.view' permission can access
+    return {"settings": settings}
+```
+
+### Multiple Permission Checks
+
+Require any one of several permissions:
+
+```python
+from src.api.auth.dependencies import require_any_permission
+
+@router.get("/data")
+async def get_data(
+    current_user=Depends(require_any_permission("data.view", "data.edit"))
+):
+    # Users with either permission can access
+    return data
+```
+
+Require all permissions:
+
+```python
+from src.api.auth.dependencies import require_all_permissions
+
+@router.delete("/critical")
+async def delete_critical(
+    current_user=Depends(require_all_permissions("admin.delete", "audit.log"))
+):
+    # Only users with BOTH permissions can access
+    return {"deleted": True}
+```
+
+### Dynamic Permission Checks
+
+Check permissions within route handlers:
+
+```python
+from src.api.auth.dependencies import get_current_user_permissions
+
+@router.get("/data")
+async def get_data(
+    permissions: set = Depends(get_current_user_permissions)
+):
+    if "data.edit" in permissions:
+        # Show edit UI
+        return {"data": data, "editable": True}
+    else:
+        # Read-only view
+        return {"data": data, "editable": False}
+```
+
+## Security Features
+
+### Token Revocation
+
+Support Bot supports both individual and global token revocation:
+
+<CardGroup cols={2}>
+  <Card title="Individual Revocation" icon="ban">
+    Logout revokes a specific token using its JTI:
+    
+    ```sql
+    INSERT INTO revoked_tokens (jti, expires_at)
+    VALUES ('token-jti', '2025-03-31T00:00:00')
+    ```
+  </Card>
+  
+  <Card title="Global Revocation" icon="rotate">
+    Password changes invalidate all user tokens:
+    
+    ```sql
+    UPDATE users 
+    SET token_version = token_version + 1
+    WHERE id = 'user-id'
+    ```
+  </Card>
+</CardGroup>
+
+### Password Security
+
+Passwords are hashed using bcrypt with automatic salt generation:
+
+```python
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Hash password
+hashed = get_password_hash(plain_password)
+
+# Verify password
+is_valid = verify_password(plain_password, hashed_password)
+```
+
+<Note>
+  Bcrypt is intentionally slow (adaptive hashing) to resist brute-force attacks. This is a security feature, not a performance issue.
+</Note>
+
+### State Parameter (OAuth)
+
+OAuth flows use encrypted state parameters to prevent CSRF attacks:
+
+```python
+def create_oauth_state(provider: str, purpose: str) -> str:
+    """Create encrypted state token with expiration."""
+    payload = {
+        "provider": provider,
+        "purpose": purpose,
+        "exp": datetime.utcnow() + timedelta(minutes=10)
+    }
+    return jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+def decode_oauth_state(state: str) -> dict:
+    """Verify and decode state token."""
+    try:
+        return jwt.decode(state, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    except jwt.InvalidTokenError:
+        return None
+```
+
+This ensures OAuth callbacks are legitimate and from the expected flow.
+
+## Best Practices
+
+### Token Storage
+
+<AccordionGroup>
+  <Accordion title="Web Applications">
+    Store tokens in memory or httpOnly cookies:
+    
+    ✅ Memory (React state, Redux store)
+    ✅ httpOnly cookies (set by backend)
+    
+    ❌ localStorage (vulnerable to XSS)
+    ❌ sessionStorage (vulnerable to XSS)
+  </Accordion>
+
+  <Accordion title="Mobile Applications">
+    Use secure storage mechanisms:
+    
+    - iOS: Keychain Services
+    - Android: EncryptedSharedPreferences
+    - React Native: react-native-keychain
+  </Accordion>
+
+  <Accordion title="Server-to-Server">
+    Use environment variables or secret management:
+    
+    - AWS Secrets Manager
+    - Azure Key Vault
+    - HashiCorp Vault
+    - Environment variables (never commit to git)
+  </Accordion>
+</AccordionGroup>
+
+### Token Refresh Strategy
+
+Support Bot tokens are long-lived (30 days by default):
+
+```bash
+JWT_EXPIRY=30  # days
+```
+
+For sensitive operations, consider:
+1. Shorter token lifetimes (`JWT_EXPIRY=1`)
+2. Implementing refresh tokens
+3. Requiring re-authentication for critical actions
+
+### Multi-Provider Accounts
+
+Users can link multiple authentication providers to one account:
+
+```python
+# User signs up with email/password
+POST /api/auth/signup {email, password}
+
+# Later, user signs in with Google (same email)
+GET /api/auth/oauth/google
+
+# System automatically links Google identity to existing account
+user.auth_identities = ["local", "google"]
+```
+
+This allows users to sign in with either method.
+
+## Troubleshooting
+
+### OAuth Redirect URI Mismatch
+
+If OAuth fails with "redirect_uri_mismatch":
+
+1. **Check provider configuration**: Ensure redirect URI in provider console matches your environment
+2. **Verify environment variables**: Confirm `*_REDIRECT_URI` matches your actual callback URL
+3. **Test with exact match**: Include protocol, domain, port, and path exactly
+
+### Token Validation Failures
+
+If requests return 401 Unauthorized:
+
+1. **Check token format**: Ensure "Bearer " prefix is included
+2. **Verify expiration**: Tokens expire after `JWT_EXPIRY` days
+3. **Review revocation**: User may have logged out or changed password
+4. **Validate secret**: `JWT_SECRET_KEY` must match between token creation and validation
+
+### Password Reset Not Working
+
+If password updates fail:
+
+1. **Verify authentication**: Ensure user is logged in with valid token
+2. **Check provider**: OAuth-only users need to set password first
+3. **Review password requirements**: Implement minimum complexity if needed
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="User Management" icon="users" href="/admin/user-management">
+    Learn how to manage users, roles, and permissions
+  </Card>
+  
+  <Card title="Role & Permissions" icon="shield" href="/admin/role-permissions">
+    Configure granular access control for your team
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/auth/overview">
+    Complete API documentation for authentication endpoints
+  </Card>
+  
+  <Card title="Security Settings" icon="lock" href="/admin/settings">
+    Configure authentication providers and security policies
+  </Card>
+</CardGroup>

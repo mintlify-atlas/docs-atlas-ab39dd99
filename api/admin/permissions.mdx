@@ -1,0 +1,371 @@
+---
+title: "Permissions"
+description: "Manage permissions and permission sets"
+---
+
+## List All Permissions
+
+<api-endpoint method="GET" path="/permissions" />
+
+List all system-defined permissions.
+
+### Response
+
+<ResponseField name="permissions" type="array">
+  Array of permission objects
+  <expandable>
+    <ResponseField name="id" type="uuid">
+      Unique permission identifier
+    </ResponseField>
+    <ResponseField name="code" type="string">
+      Permission code (e.g., "user.view", "user.edit")
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Human-readable permission name
+    </ResponseField>
+    <ResponseField name="description" type="string" optional>
+      Permission description
+    </ResponseField>
+    <ResponseField name="category" type="string" optional>
+      Permission category for grouping
+    </ResponseField>
+    <ResponseField name="is_system" type="boolean">
+      Whether this is a system-defined permission
+    </ResponseField>
+    <ResponseField name="created_at" type="string">
+      ISO 8601 timestamp of creation
+    </ResponseField>
+    <ResponseField name="updated_at" type="string">
+      ISO 8601 timestamp of last update
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+---
+
+## List Permission Categories
+
+<api-endpoint method="GET" path="/permissions/categories" />
+
+Get all permission categories for organizing permissions.
+
+### Response
+
+<ResponseField name="categories" type="array">
+  Array of category strings
+</ResponseField>
+
+---
+
+## Get My Permissions
+
+<api-endpoint method="GET" path="/permissions/me" />
+
+Get the current user's effective permissions.
+
+### Response
+
+<ResponseField name="user_id" type="uuid">
+  The current user's identifier
+</ResponseField>
+
+<ResponseField name="permissions" type="array">
+  Array of permission codes the user has access to
+</ResponseField>
+
+---
+
+## List Permission Sets
+
+<api-endpoint method="GET" path="/permissions/sets" />
+
+List all permission sets with their associated permissions.
+
+### Response
+
+<ResponseField name="permission_sets" type="array">
+  Array of permission set objects
+  <expandable>
+    <ResponseField name="id" type="uuid">
+      Unique permission set identifier
+    </ResponseField>
+    <ResponseField name="code" type="string">
+      Permission set code
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Permission set name
+    </ResponseField>
+    <ResponseField name="description" type="string" optional>
+      Permission set description
+    </ResponseField>
+    <ResponseField name="created_at" type="string">
+      ISO 8601 timestamp of creation
+    </ResponseField>
+    <ResponseField name="updated_at" type="string">
+      ISO 8601 timestamp of last update
+    </ResponseField>
+    <ResponseField name="permissions" type="array">
+      Array of permissions in this set
+      <expandable>
+        <ResponseField name="id" type="uuid">
+          Permission identifier
+        </ResponseField>
+        <ResponseField name="code" type="string">
+          Permission code
+        </ResponseField>
+        <ResponseField name="name" type="string">
+          Permission name
+        </ResponseField>
+        <ResponseField name="description" type="string" optional>
+          Permission description
+        </ResponseField>
+        <ResponseField name="category" type="string" optional>
+          Permission category
+        </ResponseField>
+        <ResponseField name="is_system" type="boolean">
+          Whether this is a system permission
+        </ResponseField>
+      </expandable>
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+---
+
+## Create Permission Set
+
+<api-endpoint method="POST" path="/permissions/sets" />
+
+Create a new permission set with a collection of permissions.
+
+### Body Parameters
+
+<ParamField body="code" type="string" required>
+  Unique code for the permission set
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  Human-readable name for the permission set
+</ParamField>
+
+<ParamField body="description" type="string" optional>
+  Description of what this permission set grants
+</ParamField>
+
+<ParamField body="permission_codes" type="array" required>
+  Array of permission codes to include in this set (e.g., ["user.view", "user.edit"])
+</ParamField>
+
+### Response
+
+Same as individual permission set in [List Permission Sets](#list-permission-sets).
+
+---
+
+## Get Permission Set
+
+<api-endpoint method="GET" path="/permissions/sets/{id}" />
+
+Get a specific permission set by ID.
+
+### Path Parameters
+
+<ParamField path="id" type="uuid" required>
+  The permission set ID to retrieve
+</ParamField>
+
+### Response
+
+Same as individual permission set in [List Permission Sets](#list-permission-sets).
+
+---
+
+## Update Permission Set
+
+<api-endpoint method="PUT" path="/permissions/sets/{id}" />
+
+Update an existing permission set.
+
+### Path Parameters
+
+<ParamField path="id" type="uuid" required>
+  The permission set ID to update
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="name" type="string" optional>
+  New name for the permission set
+</ParamField>
+
+<ParamField body="description" type="string" optional>
+  New description for the permission set
+</ParamField>
+
+<ParamField body="permission_codes" type="array" optional>
+  Array of permission codes to replace existing permissions
+</ParamField>
+
+### Response
+
+Same as individual permission set in [List Permission Sets](#list-permission-sets).
+
+---
+
+## Delete Permission Set
+
+<api-endpoint method="DELETE" path="/permissions/sets/{id}" />
+
+Delete a permission set from the system.
+
+### Path Parameters
+
+<ParamField path="id" type="uuid" required>
+  The permission set ID to delete
+</ParamField>
+
+### Response
+
+Returns 204 No Content on success.
+
+---
+
+## List RBAC Audit Logs
+
+<api-endpoint method="GET" path="/admin/rbac/audit-logs" />
+
+List RBAC audit logs with optional filters for tracking permission changes.
+
+### Query Parameters
+
+<ParamField query="entity_type" type="string" optional>
+  Filter by entity type (e.g., "user", "role", "permission")
+</ParamField>
+
+<ParamField query="entity_id" type="uuid" optional>
+  Filter by specific entity ID
+</ParamField>
+
+<ParamField query="action" type="string" optional>
+  Filter by action type
+</ParamField>
+
+<ParamField query="limit" type="integer" default="50">
+  Number of logs to return (1-100)
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of logs to skip for pagination
+</ParamField>
+
+### Response
+
+<ResponseField name="audit_logs" type="array">
+  Array of audit log entries
+  <expandable>
+    <ResponseField name="id" type="uuid">
+      Audit log entry ID
+    </ResponseField>
+    <ResponseField name="entity_type" type="string">
+      Type of entity that was changed
+    </ResponseField>
+    <ResponseField name="entity_id" type="uuid">
+      ID of the entity that was changed
+    </ResponseField>
+    <ResponseField name="secondary_entity_id" type="uuid" optional>
+      Secondary entity ID for relationship changes
+    </ResponseField>
+    <ResponseField name="action" type="string">
+      Action that was performed
+    </ResponseField>
+    <ResponseField name="old_value" type="object" optional>
+      Previous value before the change
+    </ResponseField>
+    <ResponseField name="new_value" type="object" optional>
+      New value after the change
+    </ResponseField>
+    <ResponseField name="changed_by" type="uuid" optional>
+      User ID who made the change
+    </ResponseField>
+    <ResponseField name="changed_at" type="string">
+      ISO 8601 timestamp of the change
+    </ResponseField>
+    <ResponseField name="ip_address" type="string" optional>
+      IP address of the user who made the change
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+<ResponseField name="total" type="integer">
+  Total number of audit logs
+</ResponseField>
+
+<ResponseField name="limit" type="integer">
+  Number of logs returned
+</ResponseField>
+
+<ResponseField name="offset" type="integer">
+  Number of logs skipped
+</ResponseField>
+
+---
+
+## Get RBAC Entity History
+
+<api-endpoint method="GET" path="/admin/rbac/audit-logs/{entity_type}/{entity_id}" />
+
+Get complete audit history for a specific RBAC entity.
+
+### Path Parameters
+
+<ParamField path="entity_type" type="string" required>
+  The type of entity (e.g., "user", "role", "permission")
+</ParamField>
+
+<ParamField path="entity_id" type="uuid" required>
+  The entity ID to retrieve history for
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="secondary_entity_id" type="uuid" optional>
+  Filter by secondary entity ID for relationship changes
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string">
+  Response status
+</ResponseField>
+
+<ResponseField name="entity_type" type="string">
+  The entity type queried
+</ResponseField>
+
+<ResponseField name="entity_id" type="string">
+  The entity ID as a string
+</ResponseField>
+
+<ResponseField name="history" type="array">
+  Array of change events
+  <expandable>
+    <ResponseField name="id" type="string">
+      Audit log entry ID
+    </ResponseField>
+    <ResponseField name="action" type="string">
+      Action performed
+    </ResponseField>
+    <ResponseField name="old_value" type="object" optional>
+      Previous value
+    </ResponseField>
+    <ResponseField name="new_value" type="object" optional>
+      New value
+    </ResponseField>
+    <ResponseField name="changed_by" type="string" optional>
+      User ID who made the change
+    </ResponseField>
+    <ResponseField name="changed_at" type="string">
+      ISO 8601 timestamp of change
+    </ResponseField>
+  </expandable>
+</ResponseField>

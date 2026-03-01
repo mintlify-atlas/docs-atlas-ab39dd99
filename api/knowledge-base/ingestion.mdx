@@ -1,0 +1,384 @@
+---
+title: "Incident Ingestion"
+description: "Upload, validate, and ingest incident data into the knowledge base"
+---
+
+The ingestion workflow follows a multi-step process: upload files, validate data, optionally apply field mappings, and confirm ingestion. The ingestion process runs asynchronously with real-time progress updates via Server-Sent Events (SSE).
+
+## Upload Incident Files
+
+<api method="POST" endpoint="/api/knowledge-base/upload" />
+
+Upload incident files and create an upload session for validation. Accepts JSON or CSV content as base64-encoded strings.
+
+### Request Body
+
+<ParamField body="files" type="array" required>
+  Array of file objects to upload
+  
+  <Expandable title="FileUploadItem">
+    <ParamField body="filename" type="string" required>
+      Name of the file (e.g., "incidents.json", "data.csv")
+    </ParamField>
+    
+    <ParamField body="size" type="integer" required>
+      Size of the file in bytes
+    </ParamField>
+    
+    <ParamField body="content" type="string" required>
+      Base64-encoded file content
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether the upload was successful
+</ResponseField>
+
+<ResponseField name="session_id" type="string">
+  Unique identifier for this upload session (UUID)
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status of the session (e.g., "pending_validation")
+</ResponseField>
+
+<ResponseField name="incident_count" type="integer">
+  Number of incidents detected in the uploaded files
+</ResponseField>
+
+<ResponseField name="file_metadata" type="array">
+  Metadata about uploaded files (filenames, sizes, record counts)
+</ResponseField>
+
+<ResponseField name="preview" type="array">
+  First 10 records from the uploaded data for preview
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.example.com/api/knowledge-base/upload \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "files": [
+      {
+        "filename": "incidents.json",
+        "size": 4096,
+        "content": "W3siaW5jaWRlbnRfaWQiOiAiSU5DMDAxIiwgInRpdGxlIjogIlNlcnZlciBkb3duIiwgImRlc2NyaXB0aW9uIjogIlByb2R1Y3Rpb24gc2VydmVyIHVucmVzcG9uc2l2ZSJ9XQ=="
+      }
+    ]
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "pending_validation",
+  "incident_count": 150,
+  "file_metadata": [
+    {
+      "filename": "incidents.json",
+      "size": 4096,
+      "record_count": 150
+    }
+  ],
+  "preview": [
+    {
+      "incident_id": "INC001",
+      "title": "Server down",
+      "description": "Production server unresponsive"
+    }
+  ]
+}
+```
+
+---
+
+## Validate Upload Session
+
+<api method="POST" endpoint="/api/knowledge-base/validate/{session_id}" />
+
+Run schema validation on an upload session to identify missing required fields and data quality issues.
+
+### Path Parameters
+
+<ParamField path="session_id" type="string" required>
+  Upload session ID returned from the upload endpoint
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Whether validation completed successfully
+</ResponseField>
+
+<ResponseField name="session_id" type="string">
+  Upload session identifier
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Validation status: "valid", "invalid", or "needs_mapping"
+</ResponseField>
+
+<ResponseField name="total_records" type="integer">
+  Total number of records in the upload
+</ResponseField>
+
+<ResponseField name="valid_count" type="integer">
+  Number of records that passed validation
+</ResponseField>
+
+<ResponseField name="error_count" type="integer">
+  Number of validation errors found
+</ResponseField>
+
+<ResponseField name="errors" type="array">
+  Detailed validation errors
+  
+  <Expandable title="ValidationErrorItem">
+    <ResponseField name="file" type="string">
+      Filename where the error occurred
+    </ResponseField>
+    
+    <ResponseField name="row" type="integer">
+      Row number (if applicable)
+    </ResponseField>
+    
+    <ResponseField name="field" type="string">
+      Field name that failed validation
+    </ResponseField>
+    
+    <ResponseField name="message" type="string">
+      Human-readable error message
+    </ResponseField>
+    
+    <ResponseField name="value" type="string">
+      The invalid value (if applicable)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="preview" type="array">
+  Preview of validated records
+</ResponseField>
+
+<ResponseField name="file_fields" type="object">
+  Detected fields in each uploaded file (used for field mapping)
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.example.com/api/knowledge-base/validate/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "invalid",
+  "total_records": 150,
+  "valid_count": 145,
+  "error_count": 5,
+  "errors": [
+    {
+      "file": "incidents.json",
+      "row": 23,
+      "field": "incident_id",
+      "message": "Required field 'incident_id' is missing",
+      "value": null
+    }
+  ],
+  "preview": [...],
+  "file_fields": {
+    "incidents.json": ["incident_id", "title", "description", "action_taken"]
+  }
+}
+```
+
+---
+
+## Apply Field Mapping
+
+<api method="POST" endpoint="/api/knowledge-base/validate/{session_id}/map-fields" />
+
+Apply field mappings to transform source field names to the expected schema and re-validate the data.
+
+### Path Parameters
+
+<ParamField path="session_id" type="string" required>
+  Upload session ID
+</ParamField>
+
+### Request Body
+
+<ParamField body="mapping" type="object" required>
+  Map of source field names to target schema fields
+  
+  Example: `{"inc_id": "incident_id", "summary": "title"}`
+</ParamField>
+
+### Response
+
+Returns a validation report (same structure as validate endpoint) with the field mappings applied.
+
+### Example Request
+
+```bash
+curl -X POST https://api.example.com/api/knowledge-base/validate/550e8400-e29b-41d4-a716-446655440000/map-fields \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mapping": {
+      "inc_id": "incident_id",
+      "summary": "title",
+      "desc": "description",
+      "resolution": "action_taken"
+    }
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "valid",
+  "total_records": 150,
+  "valid_count": 150,
+  "error_count": 0,
+  "errors": [],
+  "preview": [...]
+}
+```
+
+---
+
+## Confirm and Ingest
+
+<api method="POST" endpoint="/api/knowledge-base/ingest" />
+
+Confirm a validated upload session and begin asynchronous ingestion into the vector database. Returns a Server-Sent Events (SSE) stream with real-time progress updates.
+
+### Request Body
+
+<ParamField body="session_id" type="string" required>
+  Validated upload session ID
+</ParamField>
+
+<ParamField body="notes" type="string">
+  Optional notes about this ingestion (stored in version metadata)
+</ParamField>
+
+### Response (Server-Sent Events)
+
+The endpoint returns an SSE stream with the following event types:
+
+#### Event: `progress`
+
+<ResponseField name="batch" type="integer">
+  Current batch number being processed
+</ResponseField>
+
+<ResponseField name="totalBatches" type="integer">
+  Total number of batches to process
+</ResponseField>
+
+<ResponseField name="incidents" type="array">
+  Array of incident IDs processed in this batch
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable progress message
+</ResponseField>
+
+#### Event: `complete`
+
+<ResponseField name="success" type="boolean">
+  Always true on successful completion
+</ResponseField>
+
+<ResponseField name="version_id" type="string">
+  UUID of the newly created dataset version
+</ResponseField>
+
+<ResponseField name="version_number" type="integer">
+  Incremental version number
+</ResponseField>
+
+<ResponseField name="collection_name" type="string">
+  Qdrant collection name where data was ingested
+</ResponseField>
+
+<ResponseField name="incident_count" type="integer">
+  Total number of incidents ingested
+</ResponseField>
+
+#### Event: `error`
+
+<ResponseField name="success" type="boolean">
+  Always false on error
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  User-friendly error message
+</ResponseField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.example.com/api/knowledge-base/ingest \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "550e8400-e29b-41d4-a716-446655440000",
+    "notes": "Q4 2024 incident data upload"
+  }'
+```
+
+### Example SSE Stream
+
+```
+event: progress
+data: {"batch": 0, "totalBatches": 0, "message": "Starting ingestion..."}
+
+event: progress
+data: {"batch": 1, "totalBatches": 30, "incidents": ["INC001", "INC002", "INC003"], "message": "Batch 1 of 30 processed"}
+
+event: progress
+data: {"batch": 2, "totalBatches": 30, "incidents": ["INC004", "INC005"], "message": "Batch 2 of 30 processed"}
+
+event: complete
+data: {"success": true, "version_id": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d", "version_number": 5, "collection_name": "past_issues_v2", "incident_count": 150}
+```
+
+### Required Schema
+
+All incidents must include the following required fields:
+
+- `incident_id` (string): Unique identifier for the incident
+- `title` (string): Short title or summary
+- `description` (string): Detailed incident description
+
+Optional fields that enhance search and retrieval:
+
+- `action_taken` (string): Resolution or mitigation steps
+- `opened_at` (string): Timestamp when incident was opened
+- `updated_at` (string): Timestamp when incident was last updated
+- `impacted_application` (string): Affected application or service
+- `root_cause` (string): Root cause analysis
+- `mitigation` (string): Mitigation strategy
+- `accountable_party` (string): Team or person responsible
+- `source_system` (string): Source system (defaults to "ServiceNow")
+- `repeat_incident` (string): Whether this is a repeat incident

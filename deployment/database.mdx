@@ -1,0 +1,444 @@
+---
+title: Database Setup
+description: Configure PostgreSQL databases and run Alembic migrations
+---
+
+## Overview
+
+Support Bot uses three database systems:
+
+1. **PostgreSQL** - Main application database (port 5434)
+2. **pgvector** - Vector embeddings storage (port 5433)
+3. **Qdrant** - Vector search engine (ports 6333, 6334)
+
+Database migrations are managed using **Alembic**, which handles schema changes and versioning.
+
+## Database Services
+
+### Main Database (PostgreSQL)
+
+Stores application data including:
+- User accounts and authentication
+- Chat conversations and messages
+- LangGraph checkpoints
+- Application metadata
+
+**Configuration**:
+```yaml
+image: postgres:18-alpine
+environment:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: admin
+  POSTGRES_DB: bot_db
+port: 5434
+```
+
+**Connection String**:
+```bash
+DATABASE_URL=postgresql+asyncpg://postgres:admin@localhost:5434/bot_db
+DATABASE_URL_SYNC=postgresql://postgres:admin@localhost:5434/bot_db
+```
+
+### Vector Database (pgvector)
+
+Stores vector embeddings for semantic search and retrieval:
+- Document embeddings
+- Sentence transformers output
+- RAG (Retrieval-Augmented Generation) data
+
+**Configuration**:
+```yaml
+image: ankane/pgvector
+environment:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: admin
+  POSTGRES_DB: vector_db
+port: 5433
+```
+
+**Connection String**:
+```bash
+VECTOR_DATABASE_URL=postgresql://postgres:admin@localhost:5433/vector_db
+```
+
+### Qdrant
+
+Vector similarity search engine for:
+- Fast nearest neighbor search
+- Document retrieval
+- Semantic search operations
+
+**Configuration**:
+```yaml
+image: qdrant/qdrant
+ports:
+  - 6333 (HTTP API)
+  - 6334 (gRPC)
+```
+
+**URL**:
+```bash
+QDRANT_URL=http://localhost:6333
+```
+
+## Database Initialization
+
+### First-Time Setup
+
+<Steps>
+  <Step title="Start database services">
+    ```bash
+    docker-compose up -d db vector_db qdrant
+    ```
+  </Step>
+
+  <Step title="Verify databases are running">
+    ```bash
+    docker ps | grep -E 'postgres|qdrant'
+    ```
+
+    Expected output:
+    - `postgres-db` (port 5434)
+    - `vector-db` (port 5433)
+    - `qdrant-db` (ports 6333, 6334)
+  </Step>
+
+  <Step title="Run initial migrations">
+    Navigate to the Alembic directory and upgrade to the latest schema:
+
+    ```bash
+    cd src/api/db
+    alembic upgrade head
+    ```
+
+    This creates all necessary tables and indexes.
+  </Step>
+
+  <Step title="Verify migration status">
+    ```bash
+    alembic current
+    ```
+
+    Shows the current migration revision.
+  </Step>
+</Steps>
+
+### Production Deployment
+
+In production, the Docker container automatically runs migrations on startup:
+
+```bash
+# From Dockerfile.backend.prod
+uv run alembic -c src/api/db/alembic.ini upgrade head
+```
+
+No manual intervention required.
+
+## Alembic Migrations
+
+Alembic manages database schema versions and changes.
+
+### Migration Commands
+
+<AccordionGroup>
+  <Accordion title="Upgrade to latest schema">
+    ```bash
+    cd src/api/db
+    alembic upgrade head
+    ```
+
+    Applies all pending migrations.
+  </Accordion>
+
+  <Accordion title="Check current migration">
+    ```bash
+    alembic current
+    ```
+
+    Shows the current revision ID.
+  </Accordion>
+
+  <Accordion title="View migration history">
+    ```bash
+    alembic history --verbose
+    ```
+
+    Lists all migrations with details.
+  </Accordion>
+
+  <Accordion title="Downgrade to previous version">
+    ```bash
+    alembic downgrade -1
+    ```
+
+    Rolls back the last migration.
+  </Accordion>
+</AccordionGroup>
+
+### Creating New Migrations
+
+When you modify database models in `src/api/db/models.py`, create a migration:
+
+<Steps>
+  <Step title="Navigate to Alembic directory">
+    ```bash
+    cd src/api/db
+    ```
+  </Step>
+
+  <Step title="Generate migration">
+    ```bash
+    alembic revision --autogenerate -m "describe changes"
+    ```
+
+    Alembic automatically detects model changes and generates migration code.
+
+    Example:
+    ```bash
+    alembic revision --autogenerate -m "add user role column"
+    ```
+  </Step>
+
+  <Step title="Review generated migration">
+    Check the generated file in `src/api/db/versions/`:
+
+    ```python
+    def upgrade() -> None:
+        # Review auto-generated changes
+        op.add_column('users', sa.Column('role', sa.String(), nullable=True))
+
+    def downgrade() -> None:
+        # Review rollback logic
+        op.drop_column('users', 'role')
+    ```
+
+    Verify the changes are correct before applying.
+  </Step>
+
+  <Step title="Apply migration">
+    ```bash
+    alembic upgrade head
+    ```
+  </Step>
+</Steps>
+
+### Migration Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always review auto-generated migrations">
+    Alembic's autogenerate is powerful but not perfect. Review:
+    - Column types and constraints
+    - Index definitions
+    - Data migration needs
+    - Downgrade logic
+  </Accordion>
+
+  <Accordion title="Test migrations on a copy of production data">
+    ```bash
+    # Backup production
+    pg_dump -h localhost -p 5434 -U postgres bot_db > backup.sql
+
+    # Restore to test database
+    psql -h localhost -p 5434 -U postgres test_db < backup.sql
+
+    # Test migration
+    alembic upgrade head
+    ```
+  </Accordion>
+
+  <Accordion title="Write descriptive migration messages">
+    Use clear, action-oriented descriptions:
+
+    - Good: `"add email verification to users"`
+    - Good: `"create conversations table with indexes"`
+    - Bad: `"update db"`
+    - Bad: `"changes"`
+  </Accordion>
+
+  <Accordion title="Keep migrations small and focused">
+    One logical change per migration:
+    - Add a table
+    - Modify a column
+    - Create an index
+
+    Avoid bundling unrelated changes.
+  </Accordion>
+</AccordionGroup>
+
+## Database Management
+
+### Using Adminer
+
+Adminer provides a web UI for database management (development only):
+
+1. Open http://localhost:8080
+2. Login credentials:
+   - **System**: PostgreSQL
+   - **Server**: `db:5432` (for main DB) or `vector_db:5432`
+   - **Username**: `postgres`
+   - **Password**: `admin`
+   - **Database**: `bot_db` or `vector_db`
+
+### Using psql
+
+Connect directly via command line:
+
+```bash
+# Main database
+docker exec -it postgres-db psql -U postgres -d bot_db
+
+# Vector database
+docker exec -it vector-db psql -U postgres -d vector_db
+```
+
+### Common SQL Operations
+
+<Tabs>
+  <Tab title="List Tables">
+    ```sql
+    \dt
+    ```
+  </Tab>
+
+  <Tab title="Describe Table">
+    ```sql
+    \d table_name
+    ```
+  </Tab>
+
+  <Tab title="Check Connections">
+    ```sql
+    SELECT * FROM pg_stat_activity;
+    ```
+  </Tab>
+
+  <Tab title="Database Size">
+    ```sql
+    SELECT pg_size_pretty(pg_database_size('bot_db'));
+    ```
+  </Tab>
+</Tabs>
+
+## Backup and Restore
+
+### Backup Database
+
+<Tabs>
+  <Tab title="Using pg_dump">
+    ```bash
+    # Backup main database
+    docker exec postgres-db pg_dump -U postgres bot_db > bot_db_backup.sql
+
+    # Backup vector database
+    docker exec vector-db pg_dump -U postgres vector_db > vector_db_backup.sql
+    ```
+  </Tab>
+
+  <Tab title="Using Docker volumes">
+    ```bash
+    # Backup volume as tar
+    docker run --rm -v bot_db_data:/data -v $(pwd):/backup \
+      alpine tar czf /backup/bot_db.tar.gz -C /data .
+    ```
+  </Tab>
+</Tabs>
+
+### Restore Database
+
+<Tabs>
+  <Tab title="From SQL dump">
+    ```bash
+    # Restore main database
+    docker exec -i postgres-db psql -U postgres bot_db < bot_db_backup.sql
+
+    # Restore vector database
+    docker exec -i vector-db psql -U postgres vector_db < vector_db_backup.sql
+    ```
+  </Tab>
+
+  <Tab title="From volume backup">
+    ```bash
+    # Stop containers
+    docker-compose down
+
+    # Restore volume
+    docker run --rm -v bot_db_data:/data -v $(pwd):/backup \
+      alpine tar xzf /backup/bot_db.tar.gz -C /data
+
+    # Start containers
+    docker-compose up -d
+    ```
+  </Tab>
+</Tabs>
+
+## Troubleshooting
+
+### Migration Errors
+
+<AccordionGroup>
+  <Accordion title="'current' revision not found">
+    Initialize Alembic:
+    ```bash
+    alembic stamp head
+    ```
+  </Accordion>
+
+  <Accordion title="Constraint violation during migration">
+    1. Check existing data compatibility
+    2. Add data migration step:
+    ```python
+    def upgrade() -> None:
+        # Update existing data first
+        op.execute("UPDATE users SET role = 'user' WHERE role IS NULL")
+        # Then add constraint
+        op.alter_column('users', 'role', nullable=False)
+    ```
+  </Accordion>
+
+  <Accordion title="Multiple heads detected">
+    Merge migration branches:
+    ```bash
+    alembic merge heads -m "merge migrations"
+    alembic upgrade head
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Connection Issues
+
+<AccordionGroup>
+  <Accordion title="Connection refused">
+    1. Verify container is running:
+       ```bash
+       docker ps | grep postgres
+       ```
+    2. Check port mapping:
+       ```bash
+       docker port postgres-db
+       ```
+    3. Test connection:
+       ```bash
+       telnet localhost 5434
+       ```
+  </Accordion>
+
+  <Accordion title="Authentication failed">
+    Check credentials in environment variables:
+    ```bash
+    echo $DATABASE_URL
+    ```
+
+    Ensure they match Docker Compose configuration.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="gear" href="/deployment/environment">
+    Configure database connection strings
+  </Card>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy with Docker Compose
+  </Card>
+</CardGroup>

@@ -1,122 +1,134 @@
 {
   "$schema": "https://mintlify.com/docs.json",
+  "name": "Support Bot",
   "theme": "mint",
-  "name": "Mint Starter Kit",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#3B82F6",
+    "light": "#60A5FA",
+    "dark": "#1E40AF"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/vigneshvaranasi/bot"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/vigneshvaranasi/bot"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "architecture"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Features",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "features/ai-copilot",
+              "features/knowledge-base",
+              "features/chat-interface",
+              "features/authentication"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Administration",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "admin/user-management",
+              "admin/role-permissions",
+              "admin/llm-providers",
+              "admin/integrations",
+              "admin/settings"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Deployment",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "deployment/installation",
+              "deployment/docker",
+              "deployment/database",
+              "deployment/environment"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Authentication",
             "pages": [
-              "api-reference/introduction"
+              "api/auth/overview",
+              "api/auth/oauth",
+              "api/auth/jwt"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Chat",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/chat/conversations",
+              "api/chat/messages",
+              "api/chat/streaming"
+            ]
+          },
+          {
+            "group": "Knowledge Base",
+            "pages": [
+              "api/knowledge-base/ingestion",
+              "api/knowledge-base/search",
+              "api/knowledge-base/management"
+            ]
+          },
+          {
+            "group": "Administration",
+            "pages": [
+              "api/admin/users",
+              "api/admin/roles",
+              "api/admin/permissions",
+              "api/admin/settings"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "AI Agent",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "agent/introduction",
+              "agent/architecture",
+              "agent/workflow"
+            ]
+          },
+          {
+            "group": "Components",
+            "pages": [
+              "agent/langgraph",
+              "agent/tools",
+              "agent/guardrails",
+              "agent/llm-factory"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "agent/llm-providers",
+              "agent/vector-store",
+              "agent/checkpointing"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

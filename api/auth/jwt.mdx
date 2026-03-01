@@ -1,0 +1,313 @@
+---
+title: 'JWT Token Management'
+description: 'JWT token structure, validation, and lifecycle management'
+---
+
+## Overview
+
+The API uses JSON Web Tokens (JWT) for stateless authentication. Tokens are issued after successful authentication and must be included in the `Authorization` header for protected endpoints.
+
+## Token Structure
+
+### JWT Claims
+
+Access tokens contain the following claims:
+
+<ResponseField name="jti" type="string" required>
+  Unique token identifier (UUID v4) used for revocation
+</ResponseField>
+
+<ResponseField name="user_id" type="string" required>
+  User UUID identifier
+</ResponseField>
+
+<ResponseField name="role" type="string" required>
+  User role name (e.g., "Basic User", "Admin")
+</ResponseField>
+
+<ResponseField name="auth_provider" type="string" required>
+  Authentication provider: `local`, `github`, `google`, or `microsoft`
+</ResponseField>
+
+<ResponseField name="token_version" type="string" required>
+  Token version number for bulk revocation (incremented on password change)
+</ResponseField>
+
+<ResponseField name="exp" type="integer" required>
+  Expiration timestamp (Unix epoch)
+</ResponseField>
+
+<ResponseField name="iat" type="integer" required>
+  Issued at timestamp (Unix epoch)
+</ResponseField>
+
+### Example Token Payload
+
+```json
+{
+  "jti": "123e4567-e89b-12d3-a456-426614174000",
+  "user_id": "123e4567-e89b-12d3-a456-426614174001",
+  "role": "Basic User",
+  "auth_provider": "github",
+  "token_version": "1",
+  "exp": 1709307200,
+  "iat": 1708615200
+}
+```
+
+## Token Generation
+
+Tokens are generated after successful authentication:
+
+- **Local Login** - `/auth/login` endpoint (router.py:66)
+- **OAuth Callback** - `/auth/oauth/{provider}/callback` endpoint (router.py:120)
+
+### Expiration
+
+Token expiration is configurable via `JWT_EXPIRY_DAYS` setting (jwt.py:9). Default expiration is calculated from the current time plus the configured number of days.
+
+### Signing Algorithm
+
+Tokens are signed using the algorithm specified in `JWT_ALGORITHM` configuration (jwt.py:8). The signing key is `JWT_SECRET_KEY` (jwt.py:7).
+
+## Token Validation
+
+Tokens are validated on protected endpoints using the `get_current_user` dependency.
+
+### Validation Steps
+
+1. **Token Extraction** - Extract token from `Authorization: Bearer <token>` header
+2. **Signature Verification** - Verify token signature using secret key
+3. **Expiration Check** - Ensure token has not expired
+4. **Required Claims** - Verify `exp` and `iat` claims are present
+5. **Revocation Check** - Check if token JTI is in revoked tokens table
+6. **Version Check** - Verify token version matches user's current token version
+
+### Validation Errors
+
+**401 Unauthorized** - Invalid signature or expired token
+
+```json
+{
+  "detail": "Could not validate credentials"
+}
+```
+
+**401 Unauthorized** - Missing required claims
+
+```json
+{
+  "detail": "Token missing expiration or issued at time"
+}
+```
+
+## Token Usage
+
+### Making Authenticated Requests
+
+Include the access token in the `Authorization` header:
+
+<CodeGroup>
+```bash curl
+curl -X GET https://api.example.com/auth/me \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```python Python
+import requests
+
+headers = {
+    "Authorization": f"Bearer {access_token}"
+}
+
+response = requests.get(
+    "https://api.example.com/auth/me",
+    headers=headers
+)
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.example.com/auth/me', {
+  headers: {
+    'Authorization': `Bearer ${accessToken}`
+  }
+});
+```
+</CodeGroup>
+
+## Token Revocation
+
+Tokens can be revoked in two ways:
+
+### Individual Revocation
+
+Revoking a specific token via logout.
+
+**Endpoint**: `POST /auth/logout`
+
+<CodeGroup>
+```bash curl
+curl -X POST https://api.example.com/auth/logout \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+</CodeGroup>
+
+**Process**:
+
+1. Extract `jti` and `exp` from token claims
+2. Add token to `revoked_tokens` table with expiration timestamp
+3. Future requests with this token will be rejected
+
+**Response**:
+
+```json
+{
+  "message": "Logged out successfully"
+}
+```
+
+### Bulk Revocation
+
+Revoking all tokens for a user (password change).
+
+**Endpoint**: `POST /auth/password`
+
+<CodeGroup>
+```bash curl
+curl -X POST https://api.example.com/auth/password \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "password": "NewSecurePassword123!"
+  }'
+```
+</CodeGroup>
+
+**Request Body**:
+
+<ParamField body="password" type="string" required>
+  New password (must meet password requirements if validation is enabled)
+</ParamField>
+
+**Process**:
+
+1. Update password hash in `auth_identities` table
+2. Increment `token_version` on user record (service.py:30)
+3. All previous tokens become invalid due to version mismatch
+
+**Response**:
+
+```json
+{
+  "message": "Password updated successfully"
+}
+```
+
+### Revocation Implementation
+
+Revoked tokens are stored in the `revoked_tokens` database table with:
+
+- `jti` - Token identifier
+- `expires_at` - Token expiration timestamp (for cleanup)
+
+Expired revoked tokens can be periodically cleaned up since they're already invalid.
+
+## OAuth State Tokens
+
+In addition to access tokens, the API uses temporary state tokens for OAuth flows.
+
+### State Token Claims
+
+<ResponseField name="sub" type="string" required>
+  Subject (always "oauth_state")
+</ResponseField>
+
+<ResponseField name="provider" type="string" required>
+  OAuth provider name: `github`, `google`, or `microsoft`
+</ResponseField>
+
+<ResponseField name="purpose" type="string" required>
+  Token purpose (always "login")
+</ResponseField>
+
+<ResponseField name="user_id" type="string">
+  Optional user ID for linking flows
+</ResponseField>
+
+<ResponseField name="exp" type="integer" required>
+  Expiration timestamp (15 minutes from issuance)
+</ResponseField>
+
+<ResponseField name="iat" type="integer" required>
+  Issued at timestamp
+</ResponseField>
+
+### State Token Generation
+
+State tokens are created when initiating OAuth flows (jwt.py:38):
+
+```python
+state = create_oauth_state(
+    provider="github",
+    purpose="login"
+)
+```
+
+### State Token Validation
+
+State tokens are validated during OAuth callbacks (jwt.py:53):
+
+1. **Signature Verification** - Verify token signature
+2. **Expiration Check** - Ensure token hasn't expired (15 minute TTL)
+3. **Subject Check** - Verify `sub` claim is "oauth_state"
+4. **Provider Match** - Confirm provider matches URL parameter
+5. **Purpose Check** - Validate purpose is "login"
+
+## Security Best Practices
+
+### Token Storage
+
+- **Never** store tokens in localStorage (vulnerable to XSS)
+- Use httpOnly cookies or secure session storage
+- Clear tokens on logout
+
+### Token Transmission
+
+- **Always** use HTTPS in production
+- Never include tokens in URL parameters
+- Use `Authorization` header for token transmission
+
+### Token Lifecycle
+
+- Implement token refresh if needed for long-lived sessions
+- Revoke tokens on password change
+- Revoke tokens on logout
+- Clean up expired revoked tokens periodically
+
+### Secret Key Management
+
+- Use strong, randomly generated secret keys
+- Rotate secret keys periodically (requires re-authentication)
+- Store secrets in environment variables, never in code
+- Use different secrets for development and production
+
+## Implementation Reference
+
+Key source files:
+
+- **Token Creation** - `src/api/core/jwt.py:13` (`create_access_token`)
+- **Token Validation** - `src/api/core/jwt.py:65` (`decode_token`)
+- **OAuth State** - `src/api/core/jwt.py:38` (`create_oauth_state`)
+- **Revocation** - `src/api/auth/service.py:15` (`revoke_token`)
+- **Bulk Revocation** - `src/api/auth/service.py:23` (`revoke_all_user_tokens`)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication Overview" icon="book" href="/api/auth/overview">
+    Learn about authentication concepts and flows
+  </Card>
+  <Card title="OAuth Authentication" icon="shield" href="/api/auth/oauth">
+    Explore OAuth flows for GitHub, Google, and Microsoft
+  </Card>
+</CardGroup>

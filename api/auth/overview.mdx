@@ -1,0 +1,192 @@
+---
+title: 'Authentication Overview'
+description: 'Learn about authentication methods, flows, and security concepts'
+---
+
+## Overview
+
+The API supports multiple authentication methods to provide secure access:
+
+- **Local Authentication** - Email and password-based authentication
+- **OAuth 2.0** - GitHub, Google, and Microsoft OAuth providers
+- **JWT Tokens** - JSON Web Tokens for stateless authentication
+
+## Authentication Flow
+
+### Local Authentication
+
+1. User signs up with email and password via `/auth/signup`
+2. User logs in with credentials via `/auth/login`
+3. Server returns a JWT access token
+4. Client includes token in `Authorization` header for subsequent requests
+
+### OAuth Authentication
+
+1. Client initiates OAuth flow via `/auth/oauth/{provider}`
+2. Server returns authorization URL and state token
+3. User completes OAuth flow with provider
+4. Provider redirects to `/auth/oauth/{provider}/callback` with authorization code
+5. Server exchanges code for access token and returns JWT
+
+## Token Management
+
+### Token Structure
+
+JWT tokens include the following claims:
+
+- `jti` - Unique token identifier
+- `user_id` - User UUID
+- `role` - User role name
+- `auth_provider` - Authentication provider (local, github, google, microsoft)
+- `token_version` - Token version for revocation
+- `exp` - Expiration timestamp
+- `iat` - Issued at timestamp
+
+### Token Revocation
+
+Tokens can be revoked in two ways:
+
+1. **Individual revocation** - Logout endpoint revokes specific token by JTI
+2. **Bulk revocation** - Password updates increment token_version, invalidating all previous tokens
+
+## Authentication Providers
+
+### Available Providers
+
+<ResponseField name="providers" type="array">
+  List of enabled authentication providers
+  
+  <ResponseField name="provider" type="string">
+    Provider name: `local`, `github`, `google`, or `microsoft`
+  </ResponseField>
+</ResponseField>
+
+### Provider Configuration
+
+Each OAuth provider requires configuration:
+
+- **Client ID** - OAuth application identifier
+- **Client Secret** - OAuth application secret
+- **Redirect URI** - Callback URL for OAuth flow
+- **Tenant ID** - (Microsoft only) Azure AD tenant identifier
+
+Providers can be enabled/disabled through admin settings.
+
+## Security Features
+
+### Password Requirements
+
+When password validation is enabled, passwords must contain:
+
+- Minimum 12 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one digit
+- At least one special character: `!@#$%^&*(),.?":{}|<>`
+
+### Password Hashing
+
+Passwords are hashed using bcrypt with automatic salt generation.
+
+### Token Expiration
+
+Access tokens expire after a configurable number of days (default: varies by configuration).
+
+## Common Endpoints
+
+### List Providers
+
+<CodeGroup>
+```bash curl
+curl -X GET https://api.example.com/auth/providers
+```
+</CodeGroup>
+
+<ResponseExample>
+```json Response
+{
+  "providers": ["local", "github", "google", "microsoft"]
+}
+```
+</ResponseExample>
+
+### Get Current User
+
+<CodeGroup>
+```bash curl
+curl -X GET https://api.example.com/auth/me \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+</CodeGroup>
+
+<ResponseExample>
+```json Response
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "email": "user@example.com",
+  "is_active": true,
+  "role": "Basic User",
+  "auth_identities": ["local", "github"]
+}
+```
+</ResponseExample>
+
+### Logout
+
+<CodeGroup>
+```bash curl
+curl -X POST https://api.example.com/auth/logout \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+</CodeGroup>
+
+<ResponseExample>
+```json Response
+{
+  "message": "Logged out successfully"
+}
+```
+</ResponseExample>
+
+## Error Handling
+
+### Common Error Responses
+
+<ResponseField name="detail" type="string">
+  Error message describing what went wrong
+</ResponseField>
+
+**400 Bad Request** - Invalid input or credentials
+
+```json
+{
+  "detail": "Invalid email or password"
+}
+```
+
+**401 Unauthorized** - Missing or invalid token
+
+```json
+{
+  "detail": "Could not validate credentials"
+}
+```
+
+**403 Forbidden** - Authentication method disabled
+
+```json
+{
+  "detail": "Local authentication is disabled"
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="OAuth Authentication" icon="shield" href="/api/auth/oauth">
+    Learn about OAuth flows for GitHub, Google, and Microsoft
+  </Card>
+  <Card title="JWT Tokens" icon="key" href="/api/auth/jwt">
+    Understand JWT structure and validation
+  </Card>
+</CardGroup>

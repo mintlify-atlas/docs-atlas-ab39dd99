@@ -1,0 +1,355 @@
+---
+title: 'OAuth Authentication'
+description: 'OAuth 2.0 endpoints for GitHub, Google, and Microsoft authentication'
+---
+
+## Overview
+
+The API supports OAuth 2.0 authentication with three providers:
+
+- **GitHub** - OAuth authentication via GitHub
+- **Google** - OpenID Connect authentication via Google
+- **Microsoft** - OAuth authentication via Microsoft Azure AD
+
+## OAuth Flow
+
+The OAuth authentication process follows these steps:
+
+1. **Initiate OAuth** - Client calls `/auth/oauth/{provider}` to get authorization URL
+2. **User Authorization** - Redirect user to authorization URL
+3. **Provider Callback** - Provider redirects to `/auth/oauth/{provider}/callback`
+4. **Token Exchange** - Server exchanges authorization code for JWT access token
+
+## Endpoints
+
+### Initiate OAuth
+
+Get the authorization URL to redirect users to the OAuth provider.
+
+<CodeGroup>
+```bash GitHub
+curl -X GET https://api.example.com/auth/oauth/github
+```
+
+```bash Google
+curl -X GET https://api.example.com/auth/oauth/google
+```
+
+```bash Microsoft
+curl -X GET https://api.example.com/auth/oauth/microsoft
+```
+</CodeGroup>
+
+**Method**: `GET`
+
+**Path**: `/auth/oauth/{provider}`
+
+<ParamField path="provider" type="string" required>
+  OAuth provider name: `github`, `google`, or `microsoft`
+</ParamField>
+
+#### Response
+
+<ResponseField name="authorization_url" type="string" required>
+  OAuth provider authorization URL to redirect the user to
+</ResponseField>
+
+<ResponseField name="state" type="string" required>
+  Signed state token for CSRF protection (valid for 15 minutes)
+</ResponseField>
+
+<ResponseExample>
+```json GitHub Response
+{
+  "authorization_url": "https://github.com/login/oauth/authorize?client_id=...&redirect_uri=...&scope=user:email&state=...",
+  "state": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+```json Google Response
+{
+  "authorization_url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=...&redirect_uri=...&scope=openid+email+profile&state=...",
+  "state": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+```json Microsoft Response
+{
+  "authorization_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=...&redirect_uri=...&scope=openid+email+profile+User.Read&state=...",
+  "state": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+</ResponseExample>
+
+### OAuth Callback
+
+Handle the OAuth provider callback and exchange authorization code for JWT access token.
+
+<CodeGroup>
+```bash GitHub
+curl -X GET "https://api.example.com/auth/oauth/github/callback?code=AUTHORIZATION_CODE&state=STATE_TOKEN"
+```
+
+```bash Google
+curl -X GET "https://api.example.com/auth/oauth/google/callback?code=AUTHORIZATION_CODE&state=STATE_TOKEN"
+```
+
+```bash Microsoft
+curl -X GET "https://api.example.com/auth/oauth/microsoft/callback?code=AUTHORIZATION_CODE&state=STATE_TOKEN"
+```
+</CodeGroup>
+
+**Method**: `GET`
+
+**Path**: `/auth/oauth/{provider}/callback`
+
+<ParamField path="provider" type="string" required>
+  OAuth provider name: `github`, `google`, or `microsoft`
+</ParamField>
+
+<ParamField query="code" type="string" required>
+  Authorization code from OAuth provider
+</ParamField>
+
+<ParamField query="state" type="string" required>
+  State token from initiate OAuth response
+</ParamField>
+
+#### Response
+
+<ResponseField name="access_token" type="string" required>
+  JWT access token for API authentication
+</ResponseField>
+
+<ResponseField name="token_type" type="string" required>
+  Token type (always "bearer")
+</ResponseField>
+
+<ResponseField name="user_id" type="string" required>
+  User UUID
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  User email address
+</ResponseField>
+
+<ResponseField name="role" type="string" required>
+  User role name
+</ResponseField>
+
+<ResponseExample>
+```json Response
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIxMjNlNDU2Ny1lODliLTEyZDMtYTQ1Ni00MjY2MTQxNzQwMDAiLCJ1c2VyX2lkIjoiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjE0MTc0MDAwIiwicm9sZSI6IkJhc2ljIFVzZXIiLCJhdXRoX3Byb3ZpZGVyIjoiZ2l0aHViIiwidG9rZW5fdmVyc2lvbiI6IjEiLCJleHAiOjE3MDkzMDcyMDAsImlhdCI6MTcwODYxNTIwMH0...",
+  "token_type": "bearer",
+  "user_id": "123e4567-e89b-12d3-a456-426614174000",
+  "email": "user@example.com",
+  "role": "Basic User"
+}
+```
+</ResponseExample>
+
+## Provider Details
+
+### GitHub OAuth
+
+**Authorization URL**: `https://github.com/login/oauth/authorize`
+
+**Token URL**: `https://github.com/login/oauth/access_token`
+
+**Scopes**: `user:email`
+
+**Configuration**:
+
+- `GITHUB_CLIENT_ID` - GitHub OAuth App client ID
+- `GITHUB_CLIENT_SECRET` - GitHub OAuth App client secret
+- `GITHUB_REDIRECT_URI` - OAuth callback URL
+
+**User Profile**:
+
+Fetches user data from `https://api.github.com/user` and verified emails from `https://api.github.com/user/emails`.
+
+**Requirements**:
+
+- GitHub account must have a verified email
+- If email is not public, the primary verified email is used
+
+### Google OAuth
+
+**Authorization URL**: Retrieved from OpenID Connect discovery document
+
+**Token URL**: Retrieved from OpenID Connect discovery document
+
+**Discovery URL**: `https://accounts.google.com/.well-known/openid-configuration`
+
+**Scopes**: `openid email profile`
+
+**Configuration**:
+
+- `GOOGLE_CLIENT_ID` - Google OAuth 2.0 client ID
+- `GOOGLE_CLIENT_SECRET` - Google OAuth 2.0 client secret
+- `GOOGLE_REDIRECT_URI` - OAuth callback URL
+
+**User Profile**:
+
+Fetches user data from Google's userinfo endpoint.
+
+**Requirements**:
+
+- Google account email must be verified
+- Fails with 400 error if email is not verified
+
+### Microsoft OAuth
+
+**Authorization URL**: `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize`
+
+**Token URL**: `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token`
+
+**Graph Endpoint**: `https://graph.microsoft.com/v1.0/me`
+
+**Scopes**: `openid email profile User.Read`
+
+**Configuration**:
+
+- `MICROSOFT_CLIENT_ID` - Azure AD application client ID
+- `MICROSOFT_CLIENT_SECRET` - Azure AD application client secret
+- `MICROSOFT_REDIRECT_URI` - OAuth callback URL
+- `MICROSOFT_TENANT_ID` - Azure AD tenant ID (defaults to "common" for multi-tenant)
+
+**User Profile**:
+
+Fetches user data from Microsoft Graph API. Uses `mail` field or falls back to `userPrincipalName` for email.
+
+**Requirements**:
+
+- Microsoft account must have email address (mail or userPrincipalName)
+
+## User Linking
+
+When a user authenticates via OAuth:
+
+1. **Existing OAuth Identity** - If provider + provider_user_id exists, log in as that user
+2. **Existing Email** - If email matches existing user, link OAuth identity to account
+3. **New User** - Create new user with OAuth identity and default "Basic User" role
+
+Multiple OAuth providers can be linked to a single user account.
+
+## State Validation
+
+The OAuth state parameter is a signed JWT token that:
+
+- Prevents CSRF attacks
+- Validates the provider matches
+- Confirms the purpose is "login"
+- Expires after 15 minutes
+
+**State Token Claims**:
+
+- `sub` - Always "oauth_state"
+- `provider` - Provider name (github, google, microsoft)
+- `purpose` - Always "login"
+- `exp` - Expiration timestamp
+- `iat` - Issued at timestamp
+
+## Error Handling
+
+### OAuth Initiation Errors
+
+**403 Forbidden** - Provider is disabled
+
+```json
+{
+  "detail": "GitHub authentication is disabled"
+}
+```
+
+**400 Bad Request** - Invalid provider name
+
+```json
+{
+  "detail": "Provider invalid_provider not enabled"
+}
+```
+
+### OAuth Callback Errors
+
+**400 Bad Request** - Invalid or expired state
+
+```json
+{
+  "detail": "Invalid or expired state"
+}
+```
+
+**400 Bad Request** - Provider mismatch
+
+```json
+{
+  "detail": "Provider mismatch"
+}
+```
+
+**400 Bad Request** - Code exchange failed
+
+```json
+{
+  "detail": "Failed to exchange code for token"
+}
+```
+
+**400 Bad Request** - Email verification required (Google)
+
+```json
+{
+  "detail": "Google email not verified"
+}
+```
+
+**400 Bad Request** - Email required (GitHub)
+
+```json
+{
+  "detail": "GitHub account has no verified email. Please add a public email to your GitHub profile."
+}
+```
+
+**400 Bad Request** - User inactive
+
+```json
+{
+  "detail": "User is inactive"
+}
+```
+
+**500 Internal Server Error** - Profile fetch failed
+
+```json
+{
+  "detail": "Authentication failed"
+}
+```
+
+## Implementation Notes
+
+### Timeout Configuration
+
+All HTTP requests to OAuth providers have a 30-second timeout.
+
+### Discovery Document Caching
+
+Google's OpenID Connect discovery document is cached for 1 hour to reduce external API calls.
+
+### Provider Registry
+
+OAuth providers are registered in `src/api/auth/providers/__init__.py:7` via the `PROVIDER_REGISTRY` dictionary.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication Overview" icon="book" href="/api/auth/overview">
+    Learn about authentication concepts and flows
+  </Card>
+  <Card title="JWT Tokens" icon="key" href="/api/auth/jwt">
+    Understand JWT token structure and validation
+  </Card>
+</CardGroup>

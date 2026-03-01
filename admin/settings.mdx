@@ -1,0 +1,373 @@
+---
+title: System Settings
+description: Configure organization-wide system settings and preferences
+icon: gear
+---
+
+System Settings provide organization-wide configuration options including authentication methods, AI/ML model selection, data retention, and observability settings.
+
+## Settings Architecture
+
+Support Bot uses a versioned settings system with segment-based configuration:
+
+<CardGroup cols={2}>
+  <Card title="Segments" icon="layer-group">
+    Settings are organized into logical segments (AI/ML, Auth, etc.) that can be updated independently.
+  </Card>
+  
+  <Card title="Versioning" icon="clock-rotate-left">
+    Every settings change creates a new version with full audit trail and rollback capability.
+  </Card>
+  
+  <Card title="Append-Only" icon="database">
+    Old versions are never deleted, enabling complete change history and forensics.
+  </Card>
+  
+  <Card title="Atomic Updates" icon="atom">
+    Each segment update is atomic - either all changes succeed or none do.
+  </Card>
+</CardGroup>
+
+## AI/ML Configuration
+
+### Model Selection
+
+Choose which AI model powers your Support Bot responses.
+
+<Steps>
+  <Step title="Navigate to AI/ML Settings">
+    Go to **Settings** > **AI / ML Configuration**.
+  </Step>
+  
+  <Step title="Select Model">
+    In the **Model & Generation** section, choose from available models.
+    
+    <Info>
+      Available models come from your configured LLM providers. Add providers first to see more options.
+    </Info>
+  </Step>
+  
+  <Step title="Set Temperature">
+    Adjust the temperature slider (0.0 to 1.0):
+    - **Lower (0.0-0.3)** - More focused, consistent, deterministic
+    - **Medium (0.4-0.7)** - Balanced creativity and consistency
+    - **Higher (0.8-1.0)** - More creative, varied, less predictable
+    
+    <Note>
+      For support use cases, values between 0.2-0.4 work best.
+    </Note>
+  </Step>
+  
+  <Step title="User Model Selection">
+    Toggle **Let Users Choose Model** to allow users to select their preferred model in chat sessions.
+    
+    When disabled, all users are locked to the admin-selected model.
+  </Step>
+  
+  <Step title="Save">
+    Click **Save** to apply your model configuration.
+  </Step>
+</Steps>
+
+### Safety Filters
+
+Protect your organization from inappropriate content.
+
+<Steps>
+  <Step title="Configure Deny List">
+    In the **Safety & Observability** section, add words to block:
+    
+    1. Type words separated by commas in the input field
+    2. Click **Add word**
+    3. Repeat for all words you want to filter
+    
+    <Warning>
+      Deny list words are filtered from both user prompts and AI responses.
+    </Warning>
+  </Step>
+  
+  <Step title="View All Deny Words">
+    Click **View All** to see the complete list in a table format.
+  </Step>
+  
+  <Step title="Remove Words">
+    In the table view, click the **×** button next to any word to remove it.
+  </Step>
+  
+  <Step title="Save Changes">
+    Click **Save** to apply deny word updates.
+  </Step>
+</Steps>
+
+### Observability
+
+<Steps>
+  <Step title="Enable Langfuse Tracing">
+    Toggle **Enable Langfuse Tracing** to send all AI interactions to Langfuse for monitoring.
+  </Step>
+  
+  <Step title="Configure Langfuse" icon="external-link">
+    Set up your Langfuse account and configure environment variables:
+    - `LANGFUSE_PUBLIC_KEY`
+    - `LANGFUSE_SECRET_KEY`
+    - `LANGFUSE_HOST`
+  </Step>
+  
+  <Step title="Save">
+    Click **Save** to enable tracing.
+  </Step>
+</Steps>
+
+<Info>
+  Langfuse provides insights into response quality, latency, token usage, and costs.
+</Info>
+
+## Authentication Settings
+
+Control which authentication methods are available to users.
+
+### Configure Auth Providers
+
+<Steps>
+  <Step title="Navigate to User Management">
+    Go to **Settings** > **User Management**.
+  </Step>
+  
+  <Step title="Toggle Providers">
+    In the **Authentication Methods** section, enable or disable:
+    - **Basic Authentication** - Email/password login
+    - **Google Authentication** - Sign in with Google
+    - **GitHub Authentication** - Sign in with GitHub
+    - **Microsoft Authentication** - Sign in with Microsoft
+  </Step>
+  
+  <Step title="Save Changes">
+    Click **Save** to apply authentication updates.
+  </Step>
+</Steps>
+
+<Warning>
+  Disabling a provider prevents **new** login sessions but doesn't terminate existing sessions.
+</Warning>
+
+### Provider Setup
+
+Before enabling OAuth providers, configure them in your environment:
+
+<Tabs>
+  <Tab title="Google">
+    1. Create OAuth credentials in [Google Cloud Console](https://console.cloud.google.com/)
+    2. Add authorized redirect URIs
+    3. Set environment variables:
+       ```bash
+       GOOGLE_CLIENT_ID=your_client_id
+       GOOGLE_CLIENT_SECRET=your_client_secret
+       ```
+  </Tab>
+  
+  <Tab title="GitHub">
+    1. Create OAuth app in [GitHub Developer Settings](https://github.com/settings/developers)
+    2. Configure callback URL
+    3. Set environment variables:
+       ```bash
+       GITHUB_CLIENT_ID=your_client_id
+       GITHUB_CLIENT_SECRET=your_client_secret
+       ```
+  </Tab>
+  
+  <Tab title="Microsoft">
+    1. Register app in [Azure Portal](https://portal.azure.com/)
+    2. Configure redirect URIs
+    3. Set environment variables:
+       ```bash
+       MICROSOFT_CLIENT_ID=your_client_id
+       MICROSOFT_CLIENT_SECRET=your_client_secret
+       MICROSOFT_TENANT_ID=your_tenant_id
+       ```
+  </Tab>
+</Tabs>
+
+## Configuration History
+
+View and rollback to previous settings versions.
+
+### View History
+
+<Steps>
+  <Step title="Navigate to History">
+    Go to **Settings** > **Configuration History**.
+  </Step>
+  
+  <Step title="Review Changes">
+    The history table shows:
+    - **Timestamp** - When the change was made
+    - **User** - Who made the change
+    - **Change Type** - Create, Update, or Rollback
+    - **Changes** - Summary of what changed
+    - **Settings Values** - Current values in that version
+  </Step>
+  
+  <Step title="Filter by Segment">
+    Use the segment filter to show only changes to specific settings (AI/ML, Auth, etc.).
+  </Step>
+</Steps>
+
+### Rollback to Previous Version
+
+<Warning>
+  Rolling back creates a new version with the old values. The rollback itself becomes part of the audit trail.
+</Warning>
+
+<Steps>
+  <Step title="Find Version">
+    In the history table, locate the version you want to restore.
+  </Step>
+  
+  <Step title="Click Rollback">
+    Click the **Rollback** button for that version.
+  </Step>
+  
+  <Step title="Add Reason (Optional)">
+    Enter a reason for the rollback (helps with audit trail).
+  </Step>
+  
+  <Step title="Confirm">
+    Confirm the rollback. A new version is created with the old values.
+  </Step>
+</Steps>
+
+<Info>
+  Rollback is instantaneous - settings take effect immediately for all users.
+</Info>
+
+## Data Retention (Coming Soon)
+
+<Note>
+  Data retention and purging features are planned for a future release.
+</Note>
+
+Future capabilities will include:
+
+- **Automatic Purging** - Delete archived clusters after a configured retention period
+- **Retention Policies** - Set different retention periods for different data types
+- **PII Masking** - Automatically redact sensitive fields before AI processing
+
+## API Access
+
+All settings can be managed programmatically via API.
+
+### Get Current Settings
+
+```bash
+GET /api/settings/segment/{segment}
+```
+
+Returns the current values for a specific segment (aiml, auth).
+
+### Update Settings
+
+```bash
+PUT /api/settings/segment/{segment}
+```
+
+Updates settings for a specific segment. Creates a new version.
+
+### View History
+
+```bash
+GET /api/settings/history?limit=50&segment=aiml
+```
+
+Retrieves version history with optional segment filter.
+
+### Rollback
+
+```bash
+POST /api/settings/rollback/{version_id}
+```
+
+Rolls back to a specific version.
+
+See the [Settings API](/api/admin/settings) documentation for full details.
+
+## Required Permissions
+
+| Action | Permission Required |
+|--------|--------------------|
+| View AI/ML settings | `aiml.view` |
+| Edit AI/ML settings | `aiml.edit` |
+| View auth settings | `auth.view` |
+| Edit auth settings | `auth.edit` |
+| View history | `history.view` |
+| Rollback settings | `history.rollback` |
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Test Before Production" icon="flask">
+    Test configuration changes in a staging environment before applying to production.
+  </Card>
+  
+  <Card title="Document Changes" icon="file-lines">
+    Use the rollback reason field to document why settings were changed.
+  </Card>
+  
+  <Card title="Monitor Performance" icon="chart-line">
+    After changing AI models or temperature, monitor response quality and user feedback.
+  </Card>
+  
+  <Card title="Regular Reviews" icon="calendar-check">
+    Periodically review settings history to audit configuration changes.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Settings Not Saving
+
+<AccordionGroup>
+  <Accordion title="Permission Denied">
+    Verify you have the required permission for that settings segment (`aiml.edit`, `auth.edit`).
+  </Accordion>
+  
+  <Accordion title="Validation Error">
+    Check that all required fields are filled and values are in valid ranges (e.g., temperature 0-1).
+  </Accordion>
+  
+  <Accordion title="Concurrent Update">
+    Another admin may have saved changes at the same time. Refresh and try again.
+  </Accordion>
+</AccordionGroup>
+
+### Model Not Available
+
+1. Verify LLM providers are configured and active
+2. Check provider health status is "success"
+3. Try discovering models again from the provider
+4. Ensure the provider has a valid API key
+
+### Rollback Failed
+
+1. Verify you have `history.rollback` permission
+2. Check that the version ID is valid
+3. Ensure the version hasn't been deleted (versions are never deleted in normal operation)
+
+## Related Documentation
+
+<CardGroup cols={2}>
+  <Card title="LLM Providers" icon="brain" href="/admin/llm-providers">
+    Configure AI model providers before selecting models.
+  </Card>
+  
+  <Card title="User Management" icon="users" href="/admin/user-management">
+    Manage authentication and user access control.
+  </Card>
+  
+  <Card title="Roles & Permissions" icon="shield-halved" href="/admin/role-permissions">
+    Configure who can modify settings.
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/admin/settings">
+    Programmatic settings management.
+  </Card>
+</CardGroup>

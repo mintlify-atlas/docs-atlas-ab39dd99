@@ -1,0 +1,337 @@
+---
+title: LangGraph Implementation
+description: Understanding the agent graph architecture, state management, nodes, and edges
+---
+
+## Overview
+
+The incident resolution copilot is built using [LangGraph](https://langchain-ai.github.io/langgraph/), a framework for building stateful, multi-actor applications with LLMs. The graph orchestrates the flow between the LLM, tools, and specialized nodes.
+
+## Agent State
+
+The agent maintains state across conversation turns using the `AgentState` TypedDict:
+
+```python
+class AgentState(TypedDict):
+    """State schema for the agent graph."""
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    title: Optional[str]
+    session_id: Optional[str]
+    user_id: Optional[str]
+    langfuse_enabled: Optional[bool]
+    generate_title: Optional[bool]
+```
+
+**State Fields:**
+
+- `messages`: Conversation history with automatic message accumulation via `add_messages`
+- `title`: Generated conversation title (2-4 words)
+- `session_id`: Unique identifier for the conversation thread
+- `user_id`: User identifier for tracking and analytics
+- `langfuse_enabled`: Toggle for Langfuse observability (default: `False` for privacy)
+- `generate_title`: Whether to auto-generate a title in the graph
+
+<Note>
+The `add_messages` reducer automatically handles message deduplication and ordering, ensuring conversation history remains consistent.
+</Note>
+
+## Graph Architecture
+
+The graph consists of three primary nodes connected by conditional edges:
+
+### Nodes
+
+#### 1. Support Bot Node (`call_model`)
+
+The main LLM node that processes user queries and decides which tools to call.
+
+**Responsibilities:**
+- Searches for golden examples using semantic similarity
+- Enhances the system prompt with relevant historical Q&A pairs
+- Invokes the LLM with tool bindings
+- Streams responses back to the user
+
+**Implementation** (src/copilot/graph.py:210):
+
+```python
+def call_model(state: AgentState) -> dict:
+    """Node to call the LLM with the current state.
+    
+    This function:
+    1. Searches for similar golden examples based on the user's query
+    2. Enhances the system prompt with relevant examples
+    3. Invokes the LLM with the enhanced prompt
+    """
+    logger.debug("NODE: CALLING MODEL")
+    
+    # Get the configured LLM with tools
+    model_with_tools = _get_model_with_tools()
+    
+    user_messages = [m for m in state["messages"] if hasattr(m, 'type') and m.type == 'human']
+    latest_query = user_messages[-1].content if user_messages else ""
+    
+    enhanced_system_prompt = SYSTEM_MESSAGE_PROMPT
+    if latest_query:
+        try:
+            golden_examples = search_golden_examples_sync(
+                query=latest_query,
+                top_k=2,
+                score_threshold=0.6,
+            )            
+            if golden_examples:
+                logger.debug(f"Found {len(golden_examples)} golden examples for query")
+                enhanced_content = build_prompt_with_golden_examples(
+                    base_prompt=SYSTEM_MESSAGE_PROMPT.content,
+                    golden_examples=golden_examples,
+                )
+                enhanced_system_prompt = SystemMessage(enhanced_content)
+        except Exception as e:
+            logger.warning(f"Error searching golden examples: {e}")
+    
+    messages = [enhanced_system_prompt] + list(state["messages"])
+    callbacks = _get_callbacks(state)
+    
+    with propagate_attributes(
+        session_id=state.get("session_id"),
+        user_id=state.get("user_id")
+    ):
+        response = model_with_tools.invoke(
+            messages,
+            config={"callbacks": callbacks, "run_name": "Support Bot LLM"},
+        )
+    return {"messages": [response]}
+```
+
+#### 2. Incident Tools Node (`tool_wrapper`)
+
+Executes the agent's tools (incident lookup, search, etc.) with proper tracing.
+
+**Implementation** (src/copilot/graph.py:266):
+
+```python
+def tool_wrapper(state: AgentState) -> dict:
+    """Wrapper node for tool execution with proper callbacks."""
+    callbacks = _get_callbacks(state)
+    with propagate_attributes(
+        session_id=state.get("session_id"),
+        user_id=state.get("user_id")
+    ):
+        return _qdrant_tool_node.invoke(
+            state,
+            config={"callbacks": callbacks, "run_name": "Incident Report Qdrant Tool"},
+        )
+```
+
+The `_qdrant_tool_node` is a LangGraph `ToolNode` that automatically dispatches to the correct tool based on the LLM's tool calls.
+
+#### 3. Title Generation Node (`title_generation_node`)
+
+Generates a concise title for the conversation based on the full message history.
+
+**Implementation** (src/copilot/graph.py:316):
+
+```python
+def title_generation_node(state: AgentState) -> dict:
+    """Node to generate a title for the conversation."""
+    writer = get_stream_writer()
+    logger.debug("NODE: GENERATING TITLE")
+    
+    llm = get_configured_llm()
+    
+    chat_text = "\n".join(
+        f"{m.type.upper()}: {getattr(m, 'content', '')}"
+        for m in state["messages"]
+    )
+    
+    prompt = SystemMessage(
+        "Generate a concise, 2-4 word title by using the chat history. "
+        "The title should clearly represent the main theme or subject of the conversation. "
+        "Here is a conversation transcript:\n"
+        f"{chat_text}\n\n"
+        "Prioritize accuracy over excessive creativity; keep it clear and simple. "
+        "The output must be only the title, without any markdown code fences or other encapsulating text."
+    )
+    
+    callbacks = _get_callbacks(state)
+    with propagate_attributes(
+        session_id=state.get("session_id"),
+        user_id=state.get("user_id")
+    ):
+        response = llm.invoke(
+            [prompt],
+            config={"callbacks": callbacks, "run_name": "Title Generator LLM"},
+        )
+    
+    title_text = response.content.strip()
+    if not title_text:
+        title_text = "Untitled Chat"
+    
+    logger.debug(f"Generated Title: {title_text}")
+    writer({"title": title_text})
+    writer({"status": "Almost done, wrapping up the details"})
+    
+    return {"title": title_text}
+```
+
+### Edges
+
+#### Entry Point
+
+The graph always starts at the `support_bot` node:
+
+```python
+workflow.set_entry_point("support_bot")
+```
+
+#### Conditional Edge (`wants_qdrant_tool`)
+
+After the LLM responds, this function determines the next step:
+
+```python
+def wants_qdrant_tool(state: AgentState) -> str:
+    """Conditional edge: decide whether to call tool, generate title, or end."""
+    writer = get_stream_writer()
+    logger.debug("CONDITIONAL EDGE: WANTS QDRANT TOOL?")
+    
+    last_message = state["messages"][-1]
+    if not getattr(last_message, "tool_calls", None):
+        should_generate_in_graph = state.get("generate_title", True)
+        
+        if not state.get("title") and should_generate_in_graph:
+            writer({"status": "Generating title for the incident report..."})
+            logger.debug("DECISION: Call Title Generation Node.")
+            return "title_generation"
+        else:
+            writer({"status": "Almost done, wrapping up the details"})
+            logger.debug("DECISION: End of process.")
+            return "end"
+    else:
+        writer({"status": "Analyzing your request... please hold on."})
+        logger.debug("DECISION: Call Qdrant tool.")
+        return "continue"
+```
+
+**Decision Logic:**
+
+1. **If LLM made tool calls** → Route to `incident_tools` node
+2. **If no tool calls AND no title exists** → Route to `title_generation` node
+3. **Otherwise** → End the graph
+
+#### Static Edges
+
+```python
+# After tools execute, always return to the LLM
+workflow.add_edge("incident_tools", "support_bot")
+
+# After title generation, end the graph
+workflow.add_edge("title_generation", END)
+```
+
+## Graph Creation
+
+The complete graph is compiled with PostgreSQL-based checkpointing for conversation persistence:
+
+```python
+def create_agent_graph():
+    """Create and compile the agent graph with PostgreSQL checkpointing."""
+    conn = Connection.connect(config.VECTOR_DATABASE_URL, **_connection_kwargs)
+    checkpointer = PostgresSaver(conn)
+    checkpointer.setup()
+    
+    workflow = StateGraph(AgentState)
+    
+    # Add nodes
+    workflow.add_node("support_bot", call_model)
+    workflow.add_node("incident_tools", tool_wrapper)
+    workflow.add_node("title_generation", title_generation_node)
+    
+    # Set entry point
+    workflow.set_entry_point("support_bot")
+    
+    # Add conditional edges
+    workflow.add_conditional_edges(
+        "support_bot",
+        wants_qdrant_tool,
+        {
+            "continue": "incident_tools",
+            "title_generation": "title_generation",
+            "end": END,
+        },
+    )
+    
+    # Add static edges
+    workflow.add_edge("incident_tools", "support_bot")
+    workflow.add_edge("title_generation", END)
+    
+    return workflow.compile(checkpointer=checkpointer)
+```
+
+## Execution Flow
+
+**Typical execution pattern:**
+
+1. User sends a message → Graph starts at `support_bot`
+2. LLM analyzes query and decides to call `search_similar_incidents` tool
+3. Conditional edge routes to `incident_tools` node
+4. Tool executes and returns results
+5. Static edge returns to `support_bot`
+6. LLM generates response using tool results
+7. Conditional edge checks: no more tool calls, no title exists
+8. Routes to `title_generation` node
+9. Title generated and added to state
+10. Graph ends
+
+## Checkpointing
+
+The graph uses PostgreSQL-based checkpointing via `PostgresSaver`:
+
+```python
+conn = Connection.connect(config.VECTOR_DATABASE_URL, **_connection_kwargs)
+checkpointer = PostgresSaver(conn)
+checkpointer.setup()
+```
+
+**Benefits:**
+- Conversation history persists across sessions
+- State can be resumed from any checkpoint
+- Enables features like conversation replay and debugging
+
+**Usage:**
+
+```python
+app = create_agent_graph()
+result = app.invoke(
+    input={"messages": [("user", "What caused INC-2025-08-24-001?")]},
+    config={"configurable": {"thread_id": "user-123-session-456"}}
+)
+```
+
+The `thread_id` ensures messages from the same conversation are grouped together.
+
+## Parallel Title Generation
+
+For improved performance, title generation can run in parallel with response generation:
+
+```python
+def generate_title_from_query(
+    query: str,
+    session_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    langfuse_enabled: bool = False,
+) -> str:
+    """Generate a title from user query (standalone, for parallel execution).
+    
+    This function is designed to be called in parallel with the main response
+    generation. It uses only the user query to generate a title, allowing
+    title generation to start immediately without waiting for the response.
+    """
+    # Implementation details...
+```
+
+This function allows the API layer to generate titles without waiting for the full conversation to complete.
+
+## Related Components
+
+- [Agent Tools](/agent/tools) - Available tools for incident search
+- [LLM Factory](/agent/llm-factory) - Multi-provider LLM configuration
+- [Guardrails](/agent/guardrails) - Prompt validation and filtering

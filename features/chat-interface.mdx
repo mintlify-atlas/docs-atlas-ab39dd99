@@ -1,0 +1,554 @@
+---
+title: Chat Interface
+description: Real-time conversational interface with streaming responses, memory, and intelligent caching
+---
+
+# Chat Interface
+
+The Chat Interface is how you interact with Support Bot's AI Copilot. It provides a natural, conversational way to search incidents, analyze patterns, and get resolution recommendations with streaming responses and context awareness.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Streaming Responses" icon="stream">
+    See answers as they're generated in real-time using Server-Sent Events (SSE)
+  </Card>
+  
+  <Card title="Conversation Memory" icon="brain">
+    The AI remembers your entire conversation using PostgreSQL checkpointing
+  </Card>
+  
+  <Card title="Smart Caching" icon="bolt">
+    Frequently asked questions are cached for instant responses
+  </Card>
+  
+  <Card title="Markdown Support" icon="markdown">
+    Rich formatting for code blocks, tables, lists, and more
+  </Card>
+</CardGroup>
+
+## How It Works
+
+<Steps>
+  <Step title="Create or Resume Chat">
+    Each conversation is a separate chat session with its own ID:
+    
+    ```typescript
+    // New chat (no chat_id)
+    POST /api/chat/prompt/stream
+    {
+      "message": "Show me recent payment failures",
+      "chat_id": null,  // creates new chat
+      "generate_title": true
+    }
+    
+    // Continue existing chat
+    POST /api/chat/prompt/stream
+    {
+      "message": "What was the root cause?",
+      "chat_id": "550e8400-e29b-41d4-a716-446655440000"
+    }
+    ```
+  </Step>
+
+  <Step title="Query Processing">
+    Your message goes through validation and preprocessing:
+    
+    ```python
+    # 1. Prompt guardrail validation
+    is_valid, reject_msg = guard.validate_or_reject(prompt=message)
+    
+    # 2. Clarification check (for context-dependent queries)
+    should_clarify, clarification_msg = should_ask_clarification(
+        message, 
+        has_conversation_history
+    )
+    
+    # 3. Cache check (for common questions)
+    cached_response = check_cache_for_query(message)
+    ```
+  </Step>
+
+  <Step title="Streaming Response">
+    The response is streamed back in real-time using SSE:
+    
+    ```text
+    event: status
+    data: {"message": "Analyzing your request..."}
+    
+    event: final_answer
+    data: {"chunk": "Based on incident INC-2025-001..."}
+    
+    event: title
+    data: {"title": "Payment Failures"}
+    
+    event: complete
+    data: {"answer": "...", "chat_id": "..."}
+    ```
+  </Step>
+
+  <Step title="Save to Database">
+    The conversation is persisted for future reference:
+    
+    ```python
+    message = Message(
+        chat_id=chat_id,
+        human=user_message,
+        bot=ai_response
+    )
+    session.add(message)
+    await session.commit()
+    ```
+  </Step>
+</Steps>
+
+## Streaming Architecture
+
+The chat interface uses Server-Sent Events for real-time streaming:
+
+```python
+async def stream_generator():
+    # Event types:
+    yield f"event: status\ndata: {json.dumps({'message': 'Starting...'})}"
+    yield f"event: final_answer\ndata: {json.dumps({'chunk': token})}"
+    yield f"event: title\ndata: {json.dumps({'title': generated_title})}"
+    yield f"event: complete\ndata: {json.dumps({'answer': full_answer})}"
+
+return StreamingResponse(
+    stream_generator(),
+    media_type="text/event-stream",
+    headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive"
+    }
+)
+```
+
+### Event Types
+
+<AccordionGroup>
+  <Accordion title="status - Processing Updates">
+    Shows what the AI is currently doing:
+    
+    ```json
+    {"message": "Analyzing your request... please hold on."}
+    {"message": "Almost done, wrapping up the details"}
+    ```
+  </Accordion>
+
+  <Accordion title="final_answer - Response Chunks">
+    The actual AI response, streamed token by token:
+    
+    ```json
+    {"chunk": "Based "}
+    {"chunk": "on incident "}
+    {"chunk": "INC-2025-001..."}
+    ```
+  </Accordion>
+
+  <Accordion title="title - Conversation Title">
+    Auto-generated title for the conversation:
+    
+    ```json
+    {"title": "Payment Gateway Issues"}
+    ```
+  </Accordion>
+
+  <Accordion title="complete - Final Response">
+    Signals the end of streaming:
+    
+    ```json
+    {
+      "answer": "<full response text>",
+      "chat_id": "550e8400-e29b-41d4-a716-446655440000"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Smart Caching
+
+Frequently asked questions are cached for instant responses:
+
+```python
+# Check cache before processing
+cached_response = check_cache_for_query(human_message)
+
+if cached_response:
+    # Stream from cache (instant)
+    for i in range(0, len(cached_response), chunk_size):
+        chunk_text = cached_response[i:i + chunk_size]
+        yield f"event: final_answer\ndata: {json.dumps({'chunk': chunk_text})}\n\n"
+    return
+
+# Process normally and cache result
+store_chat_response(human_message, answer)
+```
+
+### Cache Benefits
+
+<CardGroup cols={2}>
+  <Card title="Instant Responses" icon="bolt">
+    Cached queries return in milliseconds instead of seconds
+  </Card>
+  
+  <Card title="Reduced LLM Costs" icon="dollar-sign">
+    Skip LLM API calls for common questions
+  </Card>
+  
+  <Card title="Consistent Answers" icon="check">
+    Same question always gets the same verified answer
+  </Card>
+  
+  <Card title="Lower Latency" icon="gauge">
+    No vector search or LLM inference needed
+  </Card>
+</CardGroup>
+
+<Note>
+  The cache only works for self-contained queries without conversation context. Follow-up questions always go through the full pipeline.
+</Note>
+
+## Conversation Memory
+
+The chat interface maintains context using LangGraph's PostgreSQL checkpointing:
+
+```python
+# Each chat has a unique thread ID
+thread_config = {"configurable": {"thread_id": str(chat_id)}}
+
+# The agent graph maintains state across invocations
+result = get_support_bot_graph().stream(
+    config=thread_config,
+    input={"messages": [("user", human_message)]}
+)
+```
+
+This allows natural follow-up questions:
+
+<CodeGroup>
+```text Message 1
+User: "Show me incidents related to the PaymentAPI"
+Bot: "Found 12 incidents... [lists details]"
+```
+
+```text Message 2
+User: "What was the most common root cause?"
+Bot: "Based on the PaymentAPI incidents I just showed you, the most common root cause was database timeouts (5 incidents)..."
+```
+
+```text Message 3
+User: "Show me the first one in detail"
+Bot: "Here are the details for incident INC-2025-001..."
+```
+</CodeGroup>
+
+## Clarification System
+
+The chat interface detects ambiguous queries and asks for clarification:
+
+```python
+should_clarify, clarification_message = should_ask_clarification(
+    human_message,
+    has_conversation_history
+)
+
+if should_clarify:
+    return {
+        "success": False,
+        "message": clarification_message,
+        "needs_clarification": True
+    }
+```
+
+### Clarification Triggers
+
+The system asks for clarification when:
+
+- You use pronouns without context ("tell me about it")
+- You reference "this" or "that" without prior context
+- You ask follow-up questions in a new chat
+
+<CodeGroup>
+```text ❌ Needs Clarification
+New Chat → "What was the root cause?"
+Response: "I need more context. Which incident are you asking about?"
+```
+
+```text ✅ Clear Query
+New Chat → "What was the root cause of incident INC-2025-001?"
+Response: [detailed response]
+```
+</CodeGroup>
+
+## Title Generation
+
+Conversations are automatically titled for easy reference:
+
+```python
+# Generated in parallel with the main response
+title_task = asyncio.create_task(
+    asyncio.to_thread(
+        generate_title_from_query,
+        human_message,
+        session_id,
+        user_id,
+        langfuse_enabled
+    )
+)
+
+# Prompt for title generation
+prompt = SystemMessage(
+    "Generate a concise, 2-4 word title for this query. "
+    "The title should clearly represent the main theme or subject. "
+    f"Query: {query}\n\n"
+    "The output must be only the title."
+)
+```
+
+Examples:
+- "Show me payment failures" → "Payment Failures"
+- "Database timeout in loan processing" → "Loan Processing Timeout"
+- "Swift transfer issues EU region" → "EU Swift Transfers"
+
+## Managing Chats
+
+### Listing Chats
+
+Get all your conversations:
+
+```bash
+GET /api/chat/?limit=20&offset=0
+```
+
+```json
+{
+  "error": false,
+  "chats": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "Payment Gateway Issues",
+      "updated_at": "2025-03-01T14:30:00Z"
+    }
+  ],
+  "total": 45,
+  "has_more": true
+}
+```
+
+### Viewing Messages
+
+Retrieve a full conversation:
+
+```bash
+GET /api/chat/messages/{chat_id}?limit=50&offset=0
+```
+
+```json
+{
+  "error": false,
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "title": "Payment Gateway Issues",
+  "messages": [
+    {
+      "id": "msg-001",
+      "human": "Show me payment gateway errors",
+      "bot": "Found 5 relevant incidents...",
+      "created_at": "2025-03-01T14:25:00Z"
+    }
+  ],
+  "total": 8,
+  "has_more": false
+}
+```
+
+### Renaming Chats
+
+Change the conversation title:
+
+```bash
+PUT /api/chat/rename/{chat_id}
+```
+
+```json
+{
+  "title": "Payment API Debugging Session"
+}
+```
+
+### Archiving Chats
+
+Remove chats from your active list:
+
+```bash
+DELETE /api/chat/archive/{chat_id}
+```
+
+Archived chats are soft-deleted (not permanently removed) and can be restored if needed.
+
+## Non-Streaming Mode
+
+For simple integrations, use the non-streaming endpoint:
+
+```bash
+POST /api/chat/prompt
+```
+
+```json
+{
+  "message": "Show me recent database issues",
+  "chat_id": null,
+  "generate_title": true
+}
+```
+
+Response:
+
+```json
+{
+  "answer": "Based on recent incidents...",
+  "chat_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+This waits for the full response before returning (no streaming).
+
+## LLM Provider Override
+
+Override the default LLM provider per message:
+
+```json
+{
+  "message": "Analyze this complex issue",
+  "chat_id": "550e8400-e29b-41d4-a716-446655440000",
+  "provider_id": "anthropic-1",
+  "model_id": "claude-3-5-sonnet-20241022"
+}
+```
+
+This lets you use different models for different tasks (e.g., GPT-4 for analysis, Claude for writing).
+
+## Prompt Guardrails
+
+The chat interface validates messages before processing:
+
+```python
+from src.copilot.guardrails.prompt_guardrails import PromptGuardrail
+
+guard = PromptGuardrail(deny_words="confidential,secret,password")
+is_valid, reject_msg = guard.validate_or_reject(prompt=user_message)
+
+if not is_valid:
+    return {"success": False, "message": reject_msg}
+```
+
+This prevents:
+- Injection attacks
+- Inappropriate content
+- Sensitive data leakage
+
+Admins can configure deny words in the system settings.
+
+## Best Practices
+
+### Writing Good Queries
+
+<AccordionGroup>
+  <Accordion title="Be Specific">
+    Provide clear context in your questions:
+    
+    ✅ "Show me HTTP 500 errors in the PaymentAPI from last week"
+    
+    ❌ "Show me errors"
+  </Accordion>
+
+  <Accordion title="Use Incident IDs">
+    Reference specific incidents when available:
+    
+    ✅ "What was the mitigation for INC-2025-001?"
+    
+    ❌ "What did we do for that payment issue?"
+  </Accordion>
+
+  <Accordion title="Build on Context">
+    Take advantage of conversation memory:
+    
+    1. "Find database timeout incidents"
+    2. "Which application was affected most?"
+    3. "Show me the mitigation steps for the LoanAPI ones"
+  </Accordion>
+
+  <Accordion title="Start Fresh When Needed">
+    Create a new chat for unrelated topics:
+    
+    Chat 1: Payment gateway issues
+    Chat 2: Database performance problems
+    Chat 3: Deployment failures
+  </Accordion>
+</AccordionGroup>
+
+### Performance Tips
+
+<CardGroup cols={2}>
+  <Card title="Use Streaming" icon="stream">
+    Streaming provides faster perceived performance as users see responses immediately
+  </Card>
+  
+  <Card title="Keep Chats Focused" icon="bullseye">
+    Shorter conversations with fewer messages perform better
+  </Card>
+  
+  <Card title="Archive Old Chats" icon="archive">
+    Regularly archive completed investigations to keep your list clean
+  </Card>
+  
+  <Card title="Cache Common Questions" icon="bolt">
+    Frequently asked questions are automatically cached for instant responses
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Streaming Connection Drops
+
+If the SSE connection is interrupted:
+
+1. **Check timeout settings**: Ensure your reverse proxy doesn't timeout SSE connections
+2. **Verify network**: Test with a stable connection
+3. **Use reconnection logic**: Implement automatic reconnection in your client
+
+### Context Not Maintained
+
+If follow-up questions don't work:
+
+1. **Verify chat_id**: Ensure you're passing the same chat_id for follow-ups
+2. **Check PostgreSQL**: The checkpointer requires a working database
+3. **Review logs**: Look for "thread_id" in the backend logs
+
+### Slow Response Times
+
+If responses are slow:
+
+1. **Check cache hit rate**: Common questions should be cached
+2. **Monitor LLM latency**: Some providers are faster than others
+3. **Review incident count**: Large knowledge bases may need optimization
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="AI Copilot" icon="robot" href="/features/ai-copilot">
+    Learn how the underlying AI agent works
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/chat/conversations">
+    Complete API documentation for chat endpoints
+  </Card>
+  
+  <Card title="LLM Providers" icon="brain" href="/admin/llm-providers">
+    Configure different AI models for your chats
+  </Card>
+  
+  <Card title="Guardrails" icon="shield" href="/agent/guardrails">
+    Set up prompt validation and safety controls
+  </Card>
+</CardGroup>

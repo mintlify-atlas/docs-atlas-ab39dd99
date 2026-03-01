@@ -1,0 +1,138 @@
+---
+title: Installation
+description: System requirements and installation steps for Support Bot
+---
+
+## System Requirements
+
+Before installing Support Bot, ensure your system meets the following requirements:
+
+### Software Requirements
+
+- **Python**: 3.11 or higher
+- **Docker**: Latest stable version (for containerized deployment)
+- **Docker Compose**: v2.0 or higher
+- **PostgreSQL**: 18 or compatible version
+- **Git**: For cloning the repository
+
+### Hardware Requirements
+
+- **RAM**: Minimum 4GB (8GB recommended for production)
+- **Storage**: At least 10GB free disk space
+- **CPU**: 2+ cores recommended
+
+## Installation Methods
+
+Support Bot can be installed using two methods:
+
+1. **Docker Deployment** (Recommended) - See [Docker Deployment](/deployment/docker)
+2. **Manual Installation** - For development or custom setups
+
+## Manual Installation
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone <repository-url>
+    cd support-bot
+    ```
+  </Step>
+
+  <Step title="Install Python dependencies">
+    Support Bot uses `uv` for dependency management:
+
+    ```bash
+    pip install uv
+    uv sync
+    ```
+
+    This will install all required dependencies from `pyproject.toml`.
+  </Step>
+
+  <Step title="Set up environment variables">
+    Copy the example environment file and configure it:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    See [Environment Configuration](/deployment/environment) for details on required variables.
+  </Step>
+
+  <Step title="Start local services">
+    Start PostgreSQL, pgvector, and Qdrant using Docker:
+
+    ```bash
+    docker-compose up -d
+    ```
+
+    This starts:
+    - PostgreSQL (port 5434) - Main database
+    - pgvector (port 5433) - Vector database
+    - Qdrant (ports 6333, 6334) - Vector search engine
+    - Adminer (port 8080) - Database management UI
+  </Step>
+
+  <Step title="Initialize the database">
+    Run Alembic migrations to set up database tables:
+
+    ```bash
+    cd src/api/db
+    alembic upgrade head
+    ```
+
+    See [Database Setup](/deployment/database) for more information.
+  </Step>
+
+  <Step title="Start the application">
+    Set the Python path and start the backend server:
+
+    ```bash
+    export PYTHONPATH=/path/to/support-bot
+    uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    ```
+
+    The API will be available at `http://localhost:8000`.
+  </Step>
+</Steps>
+
+## Verify Installation
+
+After installation, verify that all services are running:
+
+<Tabs>
+  <Tab title="Check API">
+    ```bash
+    curl http://localhost:8000/health
+    ```
+  </Tab>
+
+  <Tab title="Check Database">
+    ```bash
+    docker ps
+    ```
+
+    You should see containers running for:
+    - `postgres-db`
+    - `vector-db`
+    - `qdrant-db`
+  </Tab>
+
+  <Tab title="Check Adminer">
+    Open `http://localhost:8080` in your browser to access the database management UI.
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy using Docker Compose for production
+  </Card>
+  <Card title="Database Setup" icon="database" href="/deployment/database">
+    Configure PostgreSQL and run migrations
+  </Card>
+  <Card title="Environment Variables" icon="gear" href="/deployment/environment">
+    Configure API keys and settings
+  </Card>
+</CardGroup>

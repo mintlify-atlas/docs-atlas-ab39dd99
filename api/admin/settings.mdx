@@ -1,0 +1,330 @@
+---
+title: "Settings"
+description: "Manage application settings with versioning and audit history"
+---
+
+## Get Segment Settings
+
+<api-endpoint method="GET" path="/settings/segment/{segment}" />
+
+Get settings for a specific segment (aiml or auth). Returns default values if no settings have been configured.
+
+### Path Parameters
+
+<ParamField path="segment" type="string" required>
+  The settings segment to retrieve ("aiml" or "auth")
+</ParamField>
+
+### Response
+
+<ResponseField name="segment" type="string">
+  The settings segment
+</ResponseField>
+
+<ResponseField name="settings" type="object">
+  Settings data for the segment (structure varies by segment type)
+</ResponseField>
+
+<ResponseField name="version_id" type="uuid" optional>
+  Version ID of the settings (null if using defaults)
+</ResponseField>
+
+<ResponseField name="updated_at" type="string" optional>
+  ISO 8601 timestamp of last update (null if using defaults)
+</ResponseField>
+
+---
+
+## Update AI/ML Settings
+
+<api-endpoint method="PUT" path="/settings/segment/aiml" />
+
+Update AI/ML settings segment.
+
+### Body Parameters
+
+<ParamField body="provider_id" type="string" optional>
+  AI provider UUID
+</ParamField>
+
+<ParamField body="model" type="string" optional>
+  Model name to use
+</ParamField>
+
+<ParamField body="temperature" type="number" optional>
+  Model temperature setting (0.0-2.0)
+</ParamField>
+
+<ParamField body="deny_words" type="array" optional>
+  Array of words to deny/filter
+</ParamField>
+
+<ParamField body="langfuse_enabled" type="boolean" optional>
+  Whether Langfuse tracking is enabled
+</ParamField>
+
+<ParamField body="allow_user_model_selection" type="boolean" optional>
+  Whether users can select their own model
+</ParamField>
+
+### Response
+
+Same as [Get Segment Settings](#get-segment-settings).
+
+---
+
+## Update Auth Settings
+
+<api-endpoint method="PUT" path="/settings/segment/auth" />
+
+Update authentication settings segment.
+
+### Body Parameters
+
+<ParamField body="auth_google_enabled" type="boolean" optional>
+  Whether Google authentication is enabled
+</ParamField>
+
+<ParamField body="auth_github_enabled" type="boolean" optional>
+  Whether GitHub authentication is enabled
+</ParamField>
+
+<ParamField body="auth_microsoft_enabled" type="boolean" optional>
+  Whether Microsoft authentication is enabled
+</ParamField>
+
+<ParamField body="auth_local_enabled" type="boolean" optional>
+  Whether local (email/password) authentication is enabled
+</ParamField>
+
+### Response
+
+Same as [Get Segment Settings](#get-segment-settings).
+
+---
+
+## Get Settings History
+
+<api-endpoint method="GET" path="/settings/history" />
+
+Get settings version history with pagination and computed changes.
+
+### Query Parameters
+
+<ParamField query="limit" type="integer" default="50">
+  Number of history entries to return (1-100)
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of entries to skip for pagination
+</ParamField>
+
+<ParamField query="segment" type="string" optional>
+  Filter changes by segment ("aiml" or "auth")
+</ParamField>
+
+### Response
+
+<ResponseField name="history" type="array">
+  Array of settings history entries
+  <expandable>
+    <ResponseField name="id" type="uuid">
+      Version ID
+    </ResponseField>
+    <ResponseField name="user_id" type="uuid">
+      User who made the change
+    </ResponseField>
+    <ResponseField name="user_email" type="string">
+      Email of the user who made the change
+    </ResponseField>
+    <ResponseField name="created_at" type="string">
+      ISO 8601 timestamp of creation
+    </ResponseField>
+    <ResponseField name="updated_at" type="string">
+      ISO 8601 timestamp of last update
+    </ResponseField>
+    <ResponseField name="change_type" type="string">
+      Type of change ("create", "update", "rollback")
+    </ResponseField>
+    <ResponseField name="source_version_id" type="uuid" optional>
+      Source version for rollback operations
+    </ResponseField>
+    <ResponseField name="target_version_id" type="uuid" optional>
+      Target version for rollback operations
+    </ResponseField>
+    <ResponseField name="change_reason" type="string" optional>
+      Reason for the change
+    </ResponseField>
+    <ResponseField name="changes" type="array">
+      Array of computed changes
+      <expandable>
+        <ResponseField name="field" type="string">
+          Field name that changed
+        </ResponseField>
+        <ResponseField name="old_value" type="any">
+          Previous value
+        </ResponseField>
+        <ResponseField name="new_value" type="any">
+          New value
+        </ResponseField>
+      </expandable>
+    </ResponseField>
+    <ResponseField name="model" type="string" optional>
+      AI model name
+    </ResponseField>
+    <ResponseField name="temperature" type="number" optional>
+      Model temperature
+    </ResponseField>
+    <ResponseField name="deny_words" type="array" optional>
+      Deny words list
+    </ResponseField>
+    <ResponseField name="langfuse_enabled" type="boolean" optional>
+      Langfuse tracking status
+    </ResponseField>
+    <ResponseField name="allow_user_model_selection" type="boolean" optional>
+      User model selection status
+    </ResponseField>
+    <ResponseField name="auth_google_enabled" type="boolean" optional>
+      Google auth status
+    </ResponseField>
+    <ResponseField name="auth_github_enabled" type="boolean" optional>
+      GitHub auth status
+    </ResponseField>
+    <ResponseField name="auth_microsoft_enabled" type="boolean" optional>
+      Microsoft auth status
+    </ResponseField>
+    <ResponseField name="auth_local_enabled" type="boolean" optional>
+      Local auth status
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+<ResponseField name="total" type="integer">
+  Total number of history entries
+</ResponseField>
+
+---
+
+## Rollback to Version
+
+<api-endpoint method="POST" path="/settings/rollback/{version_id}" />
+
+Rollback all settings to a specific version. Creates a new version with the same values as the target version.
+
+### Path Parameters
+
+<ParamField path="version_id" type="uuid" required>
+  The version ID to rollback to
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="reason" type="string" optional>
+  Optional reason for the rollback
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="uuid">
+  New version ID created by the rollback
+</ResponseField>
+
+<ResponseField name="user_id" type="uuid">
+  User who performed the rollback
+</ResponseField>
+
+<ResponseField name="change_type" type="string">
+  Will be "rollback"
+</ResponseField>
+
+<ResponseField name="source_version_id" type="uuid">
+  The version being replaced (current)
+</ResponseField>
+
+<ResponseField name="target_version_id" type="uuid">
+  The version being restored
+</ResponseField>
+
+<ResponseField name="change_reason" type="string" optional>
+  Reason for the rollback
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp of the rollback
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  ISO 8601 timestamp of the rollback
+</ResponseField>
+
+---
+
+## Get Latest Settings (Legacy)
+
+<api-endpoint method="GET" path="/settings" />
+
+Get the latest settings version. Returns null if no settings have been configured.
+
+### Response
+
+Returns the complete settings object or null.
+
+---
+
+## Create Settings (Legacy)
+
+<api-endpoint method="POST" path="/settings" />
+
+Create a new settings version. Returns existing settings if no changes detected.
+
+### Body Parameters
+
+<ParamField body="model" type="string" optional>
+  AI model name
+</ParamField>
+
+<ParamField body="temperature" type="number" optional>
+  Model temperature
+</ParamField>
+
+<ParamField body="deny_words" type="array" optional>
+  Array of words to deny
+</ParamField>
+
+<ParamField body="langfuse_enabled" type="boolean" optional>
+  Langfuse tracking status
+</ParamField>
+
+<ParamField body="auth_google_enabled" type="boolean" optional>
+  Google authentication status
+</ParamField>
+
+<ParamField body="auth_github_enabled" type="boolean" optional>
+  GitHub authentication status
+</ParamField>
+
+<ParamField body="auth_microsoft_enabled" type="boolean" optional>
+  Microsoft authentication status
+</ParamField>
+
+<ParamField body="auth_local_enabled" type="boolean" optional>
+  Local authentication status
+</ParamField>
+
+### Response
+
+Returns the created or existing settings object.
+
+---
+
+## List All Settings (Legacy)
+
+<api-endpoint method="GET" path="/settings/all" />
+
+List all settings versions.
+
+### Response
+
+<ResponseField name="settings" type="array">
+  Array of all settings versions (up to 100)
+</ResponseField>

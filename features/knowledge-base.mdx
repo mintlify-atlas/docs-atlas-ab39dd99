@@ -1,0 +1,557 @@
+---
+title: Knowledge Base
+description: Vector-powered incident repository with semantic search, versioning, and intelligent ingestion
+---
+
+# Knowledge Base
+
+The Knowledge Base is Support Bot's memory - a vector-powered repository of historical incidents that enables semantic search across millions of records. It uses Qdrant vector database with embeddings to find similar incidents based on meaning, not just keywords.
+
+## How It Works
+
+The Knowledge Base transforms unstructured incident data into searchable, semantically-indexed records:
+
+<Steps>
+  <Step title="Ingestion">
+    Incident data is uploaded via API or ServiceNow integration. The system validates schema, maps fields, and prepares documents for processing.
+  </Step>
+
+  <Step title="Embedding Generation">
+    Each incident is converted into vector embeddings using the `all-MiniLM-L6-v2` model:
+    
+    ```python
+    from langchain_huggingface import HuggingFaceEmbeddings
+    
+    embeddings = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2",
+        model_kwargs={"device": "cpu"},
+        encode_kwargs={"normalize_embeddings": True}
+    )
+    ```
+  </Step>
+
+  <Step title="Vector Storage">
+    Embeddings are stored in Qdrant with rich metadata for filtering and retrieval:
+    
+    ```python
+    # LangChain format with metadata
+    metadata = {
+        "incident_id": "INC-2025-001",
+        "incident_title": "Payment Gateway Timeout",
+        "impacted_application": "PaymentAPI",
+        "root_cause": "Database connection pool exhausted",
+        "mitigation": "Increased pool size to 50",
+        "source_system": "ServiceNow"
+    }
+    ```
+  </Step>
+
+  <Step title="Semantic Search">
+    When you search, your query is embedded and compared against stored vectors using cosine similarity to find the most relevant incidents.
+  </Step>
+</Steps>
+
+## Key Features
+
+### Semantic Search
+
+Unlike keyword search, semantic search understands meaning:
+
+<CodeGroup>
+```text Keyword Search
+Query: "database timeout"
+Matches only: Records containing exactly "database" AND "timeout"
+```
+
+```text Semantic Search
+Query: "database timeout"
+Matches:
+- "Database connection pool exhausted"
+- "DB query taking too long"
+- "SQL timeout after 30 seconds"
+- "Connection hanging on postgres"
+```
+</CodeGroup>
+
+This helps you find relevant incidents even when they use different terminology.
+
+### Dataset Versioning
+
+The Knowledge Base supports multiple versions of your incident dataset:
+
+```typescript
+{
+  "version_id": "550e8400-e29b-41d4-a716-446655440000",
+  "version_number": 3,
+  "collection_name": "past_issues_v3",
+  "status": "active",
+  "incident_count": 1247,
+  "created_at": "2025-03-01T10:30:00Z",
+  "activated_at": "2025-03-01T11:00:00Z"
+}
+```
+
+You can:
+- Create new versions during ingestion
+- Rollback to previous versions
+- Compare performance across versions
+- Delete inactive versions
+
+### Batch Ingestion with Progress
+
+Large incident datasets are ingested in batches with real-time progress tracking:
+
+```python
+async def ingest_incidents_to_qdrant(
+    incidents: List[dict],
+    batch_size: int = 5,  # incidents per batch
+    progress_callback=None
+):
+    total_batches = math.ceil(len(incidents) / batch_size)
+    
+    for batch_idx in range(total_batches):
+        # Process batch
+        await progress_callback(
+            batch_idx + 1,
+            total_batches,
+            incident_ids
+        )
+```
+
+This prevents timeouts and provides visibility into long-running ingestion jobs.
+
+## Document Preparation
+
+Incidents are split into chunks for better retrieval:
+
+```python
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,      # characters per chunk
+    chunk_overlap=200,    # overlap for context preservation
+    length_function=len
+)
+
+# Each incident becomes multiple chunks
+source_text = f"""
+Incident Title: {title}
+Incident Description: {description}
+Action Taken and Resolution: {action_taken}
+"""
+
+chunks = text_splitter.split_text(source_text)
+```
+
+Each chunk maintains metadata linking back to the original incident.
+
+## Metadata Extraction
+
+The system automatically extracts structured metadata from ServiceNow incidents:
+
+```python
+def _parse_description_metadata(description: str) -> Dict[str, str]:
+    """Extract structured fields from incident descriptions."""
+    metadata = {}
+    
+    # Parse fields like:
+    # - impactedApplication: PaymentAPI
+    # - rootCause: Database timeout
+    # - mitigation: Increased connection pool
+    # - accountableParty: DevOps Team
+    
+    for line in description.split('\n'):
+        if ':' in line:
+            key, value = line.split(':', 1)
+            metadata[key.strip()] = value.strip()
+    
+    return metadata
+```
+
+This enables filtering by application, root cause, team, and more.
+
+## Managing Your Knowledge Base
+
+### Viewing Incidents
+
+List all incidents in the knowledge base:
+
+```bash
+GET /api/knowledge-base/incidents
+```
+
+```json
+{
+  "success": true,
+  "incidents": [
+    {
+      "incident_id": "INC-2025-08-24-001",
+      "title": "Payment Gateway Timeout",
+      "description": "Users unable to complete payments...",
+      "action_taken": "Increased database connection pool...",
+      "opened_at": "2025-08-24T10:30:00Z",
+      "source": "servicenow"
+    }
+  ]
+}
+```
+
+### Uploading Incidents
+
+<Steps>
+  <Step title="Upload Files">
+    Send your incident data (CSV, JSON, or Excel):
+    
+    ```bash
+    POST /api/knowledge-base/upload
+    ```
+    
+    ```json
+    {
+      "files": [
+        {
+          "filename": "incidents_2025.csv",
+          "size": 2048576,
+          "content": "base64-encoded-content"
+        }
+      ]
+    }
+    ```
+    
+    The system creates an upload session and returns a preview:
+    
+    ```json
+    {
+      "success": true,
+      "session_id": "550e8400-e29b-41d4-a716-446655440000",
+      "status": "pending_validation",
+      "incident_count": 1500,
+      "preview": [/* first 10 records */]
+    }
+    ```
+  </Step>
+
+  <Step title="Validate Schema">
+    Run validation to check for required fields:
+    
+    ```bash
+    POST /api/knowledge-base/validate/{session_id}
+    ```
+    
+    ```json
+    {
+      "success": true,
+      "is_valid": false,
+      "errors": [
+        {
+          "field": "incident_id",
+          "message": "Missing required field",
+          "affected_rows": [1, 5, 12]
+        }
+      ],
+      "suggested_mapping": {
+        "id": "incident_id",
+        "summary": "title"
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Apply Field Mapping (If Needed)">
+    If your fields don't match the schema, apply a mapping:
+    
+    ```bash
+    POST /api/knowledge-base/validate/{session_id}/map-fields
+    ```
+    
+    ```json
+    {
+      "mapping": {
+        "id": "incident_id",
+        "summary": "title",
+        "details": "description",
+        "resolution": "action_taken"
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Confirm Ingestion">
+    Start the ingestion process:
+    
+    ```bash
+    POST /api/knowledge-base/ingest
+    ```
+    
+    ```json
+    {
+      "session_id": "550e8400-e29b-41d4-a716-446655440000",
+      "notes": "Q4 2024 incidents from ServiceNow export"
+    }
+    ```
+    
+    This returns a Server-Sent Events (SSE) stream with progress:
+    
+    ```text
+    event: progress
+    data: {"batch": 1, "totalBatches": 300, "message": "Batch 1 of 300 processed"}
+    
+    event: progress
+    data: {"batch": 2, "totalBatches": 300, "message": "Batch 2 of 300 processed"}
+    
+    event: complete
+    data: {"success": true, "version_id": "...", "incident_count": 1500}
+    ```
+  </Step>
+</Steps>
+
+### Deleting Incidents
+
+Remove specific incidents from the knowledge base:
+
+```bash
+DELETE /api/knowledge-base/incidents/{incident_id}
+```
+
+This removes the incident from both Qdrant and the JSON cache.
+
+## Version Management
+
+### Listing Versions
+
+View all dataset versions:
+
+```bash
+GET /api/knowledge-base/versions?limit=20&offset=0
+```
+
+```json
+{
+  "success": true,
+  "versions": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "version_number": 3,
+      "collection_name": "past_issues_v3",
+      "status": "active",
+      "is_active": true,
+      "incident_count": 1247,
+      "source": "upload",
+      "created_at": "2025-03-01T10:30:00Z"
+    }
+  ],
+  "total": 5,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+### Rolling Back
+
+Revert to a previous version:
+
+```bash
+POST /api/knowledge-base/versions/{version_id}/rollback
+```
+
+```json
+{
+  "notes": "Reverting due to bad data in v3"
+}
+```
+
+This:
+1. Deactivates the current version
+2. Activates the specified version
+3. Restores the Qdrant collection from snapshot
+4. Updates the AI copilot to use the restored collection
+
+<Warning>
+  Rolling back doesn't delete the current version - it simply makes a different version active. You can always roll forward again.
+</Warning>
+
+### Deleting Versions
+
+Remove inactive versions to free up storage:
+
+```bash
+DELETE /api/knowledge-base/versions/{version_id}
+```
+
+<Note>
+  You cannot delete the currently active version. Activate a different version first.
+</Note>
+
+## ServiceNow Integration
+
+The Knowledge Base has special handling for ServiceNow incident exports:
+
+```python
+# ServiceNow format detection
+if "servicenow" in source.lower():
+    # Parse ServiceNow-specific fields
+    metadata = {
+        "incident_id": inc.get("number"),
+        "incident_title": inc.get("short_description"),
+        "impacted_application": parse_field("impactedApplication"),
+        "root_cause": parse_field("rootCause"),
+        "mitigation": parse_field("mitigation"),
+        "category": inc.get("category"),
+        "priority": inc.get("priority"),
+        "source_system": "ServiceNow"
+    }
+```
+
+This ensures ServiceNow exports are automatically structured and searchable.
+
+## Search Performance
+
+The Knowledge Base uses COSINE distance for vector similarity:
+
+```python
+from qdrant_client.models import VectorParams, Distance
+
+client.create_collection(
+    collection_name="past_issues_v2",
+    vectors_config=VectorParams(
+        size=384,              # all-MiniLM-L6-v2 embedding size
+        distance=Distance.COSINE
+    )
+)
+```
+
+### Search Tips
+
+<AccordionGroup>
+  <Accordion title="Use Natural Language">
+    The semantic search works best with full sentences:
+    
+    ✅ "Payment gateway timing out during checkout"
+    
+    ❌ "payment, gateway, timeout"
+  </Accordion>
+
+  <Accordion title="Include Context">
+    More context leads to better results:
+    
+    ✅ "Users in EU region unable to complete Swift bank transfers"
+    
+    ❌ "Swift errors"
+  </Accordion>
+
+  <Accordion title="Specify Applications">
+    Mention specific systems for filtered results:
+    
+    ✅ "Database connection issues in the LoanAPI service"
+    
+    ❌ "Database problems"
+  </Accordion>
+</AccordionGroup>
+
+## Monitoring Ingestion
+
+Track incident ingestion with logs:
+
+```bash
+GET /api/knowledge-base/logs?limit=10
+```
+
+```json
+{
+  "success": true,
+  "logs": [
+    {
+      "id": "log-001",
+      "incident_id": "INC-2025-001",
+      "title": "Payment Gateway Timeout",
+      "source": "servicenow",
+      "created_at": "2025-03-01T10:30:00Z"
+    }
+  ]
+}
+```
+
+This helps debug ingestion issues and audit what's been added.
+
+## Best Practices
+
+### Data Quality
+
+<CardGroup cols={2}>
+  <Card title="Complete Fields" icon="check">
+    Ensure all required fields are populated:
+    - incident_id (unique identifier)
+    - title (short description)
+    - description (detailed info)
+    - action_taken (resolution)
+  </Card>
+  
+  <Card title="Consistent Format" icon="table">
+    Use consistent date formats, naming conventions, and terminology across all incidents
+  </Card>
+  
+  <Card title="Rich Metadata" icon="tags">
+    Include structured metadata like application names, teams, and categories
+  </Card>
+  
+  <Card title="Regular Updates" icon="rotate">
+    Keep your knowledge base current by ingesting new incidents regularly
+  </Card>
+</CardGroup>
+
+### Performance Optimization
+
+1. **Batch Size**: Use smaller batches (5-10 incidents) for better progress tracking
+2. **Embeddings Cache**: The embedding model loads once and reuses for efficiency
+3. **Collection Naming**: Each version gets its own collection (e.g., `past_issues_v2`)
+
+## Troubleshooting
+
+### Ingestion Failing
+
+If ingestion fails with validation errors:
+
+```json
+{
+  "success": false,
+  "message": "Some records are missing required fields (e.g. incident_id, title, or description)"
+}
+```
+
+**Solution**: Apply field mapping or clean your source data.
+
+### Search Not Finding Results
+
+If searches return no results:
+
+1. **Check active version**: Verify a version is active
+2. **Verify embeddings**: Ensure incidents were actually ingested
+3. **Test with broader queries**: Try more general search terms
+
+### Slow Search Performance
+
+If searches are slow:
+
+1. **Check Qdrant**: Ensure the Qdrant service is running and healthy
+2. **Monitor collection size**: Very large collections (>1M vectors) may need optimization
+3. **Use metadata filters**: Pre-filter by application or date before vector search
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="AI Copilot" icon="robot" href="/features/ai-copilot">
+    Learn how the copilot uses the knowledge base for intelligent search
+  </Card>
+  
+  <Card title="ServiceNow Integration" icon="plug" href="/admin/integrations">
+    Set up automatic sync from ServiceNow to your knowledge base
+  </Card>
+  
+  <Card title="Vector Search Deep Dive" icon="magnifying-glass" href="/agent/vector-store">
+    Understand the technical details of vector embeddings and search
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/knowledge-base/management">
+    Complete API documentation for knowledge base management
+  </Card>
+</CardGroup>

@@ -1,0 +1,351 @@
+---
+title: LLM Providers
+description: Configure and manage AI model providers for your Support Bot
+icon: brain
+---
+
+LLM Providers connect Support Bot to AI model services like OpenAI, Anthropic, Google, or custom endpoints. Configure multiple providers and test connections before deploying to production.
+
+## Supported Providers
+
+Support Bot supports multiple LLM provider types:
+
+<CardGroup cols={2}>
+  <Card title="OpenAI" icon="openai">
+    Connect to GPT-4, GPT-3.5, and other OpenAI models.
+  </Card>
+  
+  <Card title="Anthropic" icon="robot">
+    Use Claude models (Claude 3 Opus, Sonnet, Haiku).
+  </Card>
+  
+  <Card title="Google" icon="google">
+    Access Gemini and PaLM models.
+  </Card>
+  
+  <Card title="Custom" icon="server">
+    Connect to self-hosted or custom API endpoints.
+  </Card>
+</CardGroup>
+
+## Adding a Provider
+
+<Steps>
+  <Step title="Navigate to AI/ML Settings">
+    From the sidebar, go to **Settings** > **AI / ML Configuration**.
+  </Step>
+  
+  <Step title="Click Add Provider">
+    In the **LLM Providers** section, click the **Add Provider** button.
+  </Step>
+  
+  <Step title="Enter Provider Details">
+    Fill in the provider configuration:
+    
+    <AccordionGroup>
+      <Accordion title="Name" icon="signature">
+        A friendly name for this provider (e.g., "Production OpenAI", "Staging Claude").
+      </Accordion>
+      
+      <Accordion title="Provider Type" icon="layer-group">
+        Select from:
+        - **OpenAI**
+        - **Anthropic**
+        - **Google**
+        - **Custom**
+      </Accordion>
+      
+      <Accordion title="Base URL" icon="link">
+        The API endpoint:
+        - OpenAI: `https://api.openai.com/v1`
+        - Anthropic: `https://api.anthropic.com/v1`
+        - Google: `https://generativelanguage.googleapis.com/v1`
+        - Custom: Your self-hosted endpoint
+      </Accordion>
+      
+      <Accordion title="API Key" icon="key">
+        Your authentication key for the provider. This is encrypted before storage.
+        
+        <Warning>
+          Never share API keys or commit them to version control.
+        </Warning>
+      </Accordion>
+      
+      <Accordion title="Models" icon="list">
+        Optionally specify which models to make available. Leave empty to use defaults for the provider type.
+        
+        Examples:
+        - OpenAI: `gpt-4`, `gpt-3.5-turbo`
+        - Anthropic: `claude-3-opus-20240229`, `claude-3-sonnet-20240229`
+        - Google: `gemini-pro`, `gemini-pro-vision`
+      </Accordion>
+    </AccordionGroup>
+  </Step>
+  
+  <Step title="Discover Models (Optional)">
+    Click **Discover Models** to automatically fetch the list of available models from the provider's API.
+    
+    <Info>
+      This requires valid credentials and makes a live API call to the provider.
+    </Info>
+  </Step>
+  
+  <Step title="Test Connection">
+    Click **Test Connection** to verify:
+    - API endpoint is reachable
+    - Credentials are valid
+    - Provider is responding correctly
+    
+    Response time is displayed on successful connection.
+  </Step>
+  
+  <Step title="Save">
+    Click **Save** to add the provider to your configuration.
+  </Step>
+</Steps>
+
+## Managing Providers
+
+### View All Providers
+
+The LLM Providers section displays all configured providers with:
+
+- **Name** and provider type
+- **Status** indicator (active/inactive)
+- **Health check status** (last test result)
+- **API key status** (configured/not configured)
+- **Available models** count
+
+### Edit Provider
+
+<Steps>
+  <Step title="Click Edit">
+    Click the edit icon on the provider card.
+  </Step>
+  
+  <Step title="Update Settings">
+    Modify any provider details:
+    - Name
+    - Base URL
+    - API Key (only if you need to change it)
+    - Models list
+  </Step>
+  
+  <Step title="Test Connection">
+    After making changes, test the connection to ensure it still works.
+  </Step>
+  
+  <Step title="Save Changes">
+    Click **Save** to apply your updates.
+  </Step>
+</Steps>
+
+<Note>
+  API keys are never displayed in the UI. You'll only see whether a key is configured.
+</Note>
+
+### Test Provider Connection
+
+Regularly test your providers to ensure they're operational:
+
+<Steps>
+  <Step title="Click Test">
+    On the provider card, click **Test Connection**.
+  </Step>
+  
+  <Step title="Review Results">
+    The system will:
+    - Attempt to connect to the provider
+    - Verify credentials
+    - Measure response time
+    
+    Results are displayed in a toast notification and saved to the provider's health check history.
+  </Step>
+</Steps>
+
+### Health Check Status
+
+Each provider shows its last health check:
+
+<ResponseField name="success" type="boolean">
+  Whether the last connection test succeeded
+</ResponseField>
+
+<ResponseField name="response_time_ms" type="number">
+  Response time in milliseconds (lower is better)
+</ResponseField>
+
+<ResponseField name="last_checked" type="timestamp">
+  When the test was last run
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if the test failed
+</ResponseField>
+
+### Delete Provider
+
+<Warning>
+  Deleting a provider removes it permanently. If models from this provider are currently selected in AI/ML settings, they'll stop working.
+</Warning>
+
+<Steps>
+  <Step title="Click Delete">
+    Click the delete icon on the provider card.
+  </Step>
+  
+  <Step title="Confirm Deletion">
+    A confirmation dialog will appear.
+  </Step>
+  
+  <Step title="Confirm">
+    Click **Delete** to permanently remove the provider.
+  </Step>
+</Steps>
+
+## Model Discovery
+
+Support Bot can automatically discover available models from your providers.
+
+### Discover from Existing Provider
+
+<Steps>
+  <Step title="Open Provider">
+    Click edit on an existing provider.
+  </Step>
+  
+  <Step title="Click Discover">
+    Click the **Discover Models** button.
+  </Step>
+  
+  <Step title="Review Results">
+    The system fetches the model list from the provider's API and displays how many were found.
+  </Step>
+  
+  <Step title="Save">
+    Save the provider to use the discovered models.
+  </Step>
+</Steps>
+
+### Discover Before Saving
+
+When creating a new provider, you can discover models before saving:
+
+<Steps>
+  <Step title="Enter Credentials">
+    Fill in the provider type, base URL, and API key.
+  </Step>
+  
+  <Step title="Click Discover">
+    Click **Discover Models** to test the credentials and fetch available models.
+  </Step>
+  
+  <Step title="Review and Save">
+    If discovery succeeds, the models field will be populated. Save the provider.
+  </Step>
+</Steps>
+
+<Info>
+  Model discovery is optional. If you leave the models field empty, Support Bot will use default models for that provider type.
+</Info>
+
+## Using Providers in Production
+
+Once providers are configured, they become available in the **Model & Generation** settings:
+
+<Steps>
+  <Step title="Select Model">
+    In **AI / ML Configuration** > **Model & Generation**, open the model dropdown.
+  </Step>
+  
+  <Step title="Choose Provider and Model">
+    Models from all active providers are shown. Select the one you want to use.
+  </Step>
+  
+  <Step title="Save Configuration">
+    Click **Save** to apply the model selection.
+  </Step>
+</Steps>
+
+The model dropdown shows models in the format: `[Provider] Model Name`
+
+## Required Permissions
+
+| Action | Permission Required |
+|--------|--------------------|
+| View providers | `llm_provider.view` |
+| Add provider | `llm_provider.create` |
+| Edit provider | `llm_provider.edit` |
+| Delete provider | `llm_provider.delete` |
+| Test connection | `llm_provider.test` |
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Rotate Keys Regularly" icon="key">
+    Update API keys on a regular schedule (e.g., every 90 days).
+  </Card>
+  
+  <Card title="Use Separate Keys" icon="split">
+    Use different API keys for development, staging, and production environments.
+  </Card>
+  
+  <Card title="Monitor Usage" icon="chart-line">
+    Track provider usage and costs through the provider's dashboard.
+  </Card>
+  
+  <Card title="Test Before Deploy" icon="vial">
+    Always test connections after adding or updating a provider.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Connection Test Fails
+
+<AccordionGroup>
+  <Accordion title="Invalid credentials">
+    - Verify your API key is correct
+    - Check if the key has expired
+    - Ensure the key has appropriate permissions
+  </Accordion>
+  
+  <Accordion title="Network issues">
+    - Verify the base URL is correct
+    - Check firewall rules allow outbound HTTPS
+    - Ensure the provider's API is operational
+  </Accordion>
+  
+  <Accordion title="Rate limiting">
+    - Wait a few minutes and try again
+    - Check your provider's rate limit settings
+    - Consider using a higher-tier API key
+  </Accordion>
+</AccordionGroup>
+
+### Models Not Appearing
+
+1. Ensure the provider is marked as **active**
+2. Check that the provider has a valid API key
+3. Verify the provider's health check status is successful
+4. Try running model discovery again
+
+### Response Time Issues
+
+<Steps>
+  <Step title="Test Connection">
+    Run a connection test to measure current response time.
+  </Step>
+  
+  <Step title="Check Provider Status">
+    Visit the provider's status page (e.g., status.openai.com) to see if there are known issues.
+  </Step>
+  
+  <Step title="Consider Alternatives">
+    If one provider is slow, configure an alternative provider as backup.
+  </Step>
+</Steps>
+
+## API Reference
+
+For programmatic provider management, see the [LLM Providers API](/api/admin/llm-providers) documentation.

@@ -1,0 +1,606 @@
+---
+title: "User Management"
+description: "Manage users, their roles, and permissions"
+---
+
+## List Users
+
+<api-endpoint method="GET" path="/admin/users" />
+
+Get a paginated list of all users with optional search functionality.
+
+### Query Parameters
+
+<ParamField query="limit" type="integer" default="20">
+  Number of users to return per page (1-100)
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of users to skip for pagination
+</ParamField>
+
+<ParamField query="search" type="string" optional>
+  Search query to filter users by email or other fields
+</ParamField>
+
+### Response
+
+<ResponseField name="users" type="array">
+  Array of user objects
+  <expandable>
+    <ResponseField name="id" type="uuid">
+      Unique user identifier
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      User email address
+    </ResponseField>
+    <ResponseField name="is_active" type="boolean">
+      Whether the user account is active
+    </ResponseField>
+    <ResponseField name="role_id" type="uuid" optional>
+      Legacy single role ID (may be null)
+    </ResponseField>
+    <ResponseField name="role_name" type="string" optional>
+      Legacy role name (may be null)
+    </ResponseField>
+    <ResponseField name="roles" type="array">
+      Array of assigned roles
+      <expandable>
+        <ResponseField name="role_id" type="uuid">
+          Role identifier
+        </ResponseField>
+        <ResponseField name="role_name" type="string">
+          Role name
+        </ResponseField>
+        <ResponseField name="assigned_at" type="string" optional>
+          ISO 8601 timestamp when role was assigned
+        </ResponseField>
+      </expandable>
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+<ResponseField name="total" type="integer">
+  Total number of users matching the query
+</ResponseField>
+
+<ResponseField name="limit" type="integer">
+  Number of users returned per page
+</ResponseField>
+
+<ResponseField name="offset" type="integer">
+  Number of users skipped
+</ResponseField>
+
+<ResponseField name="has_more" type="boolean">
+  Whether there are more users to fetch
+</ResponseField>
+
+---
+
+## Update User
+
+<api-endpoint method="PUT" path="/admin/users/{user_id}" />
+
+Update a user's status and role.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to update
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="is_active" type="boolean" required>
+  Whether the user account should be active
+</ParamField>
+
+<ParamField body="role_id" type="uuid" required>
+  The role ID to assign to the user
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+---
+
+## Delete User
+
+<api-endpoint method="DELETE" path="/admin/users/{user_id}" />
+
+Permanently delete a user from the system.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+---
+
+## Get User Roles
+
+<api-endpoint method="GET" path="/admin/users/{user_id}/roles" />
+
+Get all roles assigned to a specific user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to query
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string">
+  Response status
+</ResponseField>
+
+<ResponseField name="user_id" type="string">
+  The user ID as a string
+</ResponseField>
+
+<ResponseField name="roles" type="array">
+  Array of assigned roles
+  <expandable>
+    <ResponseField name="role_id" type="string">
+      Role identifier
+    </ResponseField>
+    <ResponseField name="role_name" type="string">
+      Role name
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+---
+
+## Replace User Roles
+
+<api-endpoint method="PUT" path="/admin/users/{user_id}/roles" />
+
+Replace all roles for a user with a new set of roles.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to update
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="role_ids" type="array" required>
+  Array of role UUIDs to assign to the user
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string">
+  Response status
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+<ResponseField name="roles" type="array">
+  Array of assigned roles
+  <expandable>
+    <ResponseField name="role_id" type="string">
+      Role identifier
+    </ResponseField>
+    <ResponseField name="role_name" type="string">
+      Role name
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+---
+
+## Add Role to User
+
+<api-endpoint method="POST" path="/admin/users/{user_id}/roles" />
+
+Assign a single role to a user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to update
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="role_id" type="uuid" required>
+  The role UUID to assign
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string">
+  Response status
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message ("Role assigned" or "Role already assigned")
+</ResponseField>
+
+---
+
+## Remove Role from User
+
+<api-endpoint method="DELETE" path="/admin/users/{user_id}/roles/{role_id}" />
+
+Remove a specific role from a user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to update
+</ParamField>
+
+<ParamField path="role_id" type="uuid" required>
+  The role ID to remove
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string">
+  Response status
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+---
+
+## Get User Direct Permissions
+
+<api-endpoint method="GET" path="/admin/users/{user_id}/permissions/direct" />
+
+Get all permissions directly assigned to a user (bypassing roles).
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to query
+</ParamField>
+
+### Response
+
+<ResponseField name="user_id" type="uuid">
+  The user identifier
+</ResponseField>
+
+<ResponseField name="direct_permissions" type="array">
+  Array of directly assigned permissions
+  <expandable>
+    <ResponseField name="permission_id" type="uuid">
+      Permission identifier
+    </ResponseField>
+    <ResponseField name="permission_code" type="string">
+      Permission code
+    </ResponseField>
+    <ResponseField name="permission_name" type="string">
+      Permission name
+    </ResponseField>
+    <ResponseField name="assigned_at" type="string">
+      ISO 8601 timestamp when permission was assigned
+    </ResponseField>
+    <ResponseField name="assigned_by" type="uuid" optional>
+      User ID who assigned the permission
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+---
+
+## Update User Direct Permissions
+
+<api-endpoint method="PUT" path="/admin/users/{user_id}/permissions/direct" />
+
+Replace all direct permissions for a user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to update
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="permission_ids" type="array" required>
+  Array of permission UUIDs to assign directly to the user
+</ParamField>
+
+### Response
+
+Same as [Get User Direct Permissions](#get-user-direct-permissions).
+
+---
+
+## Add Direct Permission to User
+
+<api-endpoint method="POST" path="/admin/users/{user_id}/permissions/direct" />
+
+Assign a permission directly to a user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to update
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="permission_id" type="uuid" required>
+  The permission UUID to assign
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string">
+  Response status
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+---
+
+## Remove Direct Permission from User
+
+<api-endpoint method="DELETE" path="/admin/users/{user_id}/permissions/direct/{permission_id}" />
+
+Remove a direct permission from a user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to update
+</ParamField>
+
+<ParamField path="permission_id" type="uuid" required>
+  The permission ID to remove
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string">
+  Response status
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+---
+
+## Get User Direct Permission Sets
+
+<api-endpoint method="GET" path="/admin/users/{user_id}/permission-sets/direct" />
+
+Get all permission sets directly assigned to a user (bypassing roles).
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to query
+</ParamField>
+
+### Response
+
+<ResponseField name="user_id" type="uuid">
+  The user identifier
+</ResponseField>
+
+<ResponseField name="direct_permission_sets" type="array">
+  Array of directly assigned permission sets
+  <expandable>
+    <ResponseField name="permission_set_id" type="uuid">
+      Permission set identifier
+    </ResponseField>
+    <ResponseField name="permission_set_code" type="string">
+      Permission set code
+    </ResponseField>
+    <ResponseField name="permission_set_name" type="string">
+      Permission set name
+    </ResponseField>
+    <ResponseField name="assigned_at" type="string">
+      ISO 8601 timestamp when permission set was assigned
+    </ResponseField>
+    <ResponseField name="assigned_by" type="uuid" optional>
+      User ID who assigned the permission set
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+---
+
+## Update User Direct Permission Sets
+
+<api-endpoint method="PUT" path="/admin/users/{user_id}/permission-sets/direct" />
+
+Replace all direct permission sets for a user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to update
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="permission_set_ids" type="array" required>
+  Array of permission set UUIDs to assign directly to the user
+</ParamField>
+
+### Response
+
+Same as [Get User Direct Permission Sets](#get-user-direct-permission-sets).
+
+---
+
+## Add Direct Permission Set to User
+
+<api-endpoint method="POST" path="/admin/users/{user_id}/permission-sets/direct" />
+
+Assign a permission set directly to a user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to update
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="permission_set_id" type="uuid" required>
+  The permission set UUID to assign
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string">
+  Response status
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+---
+
+## Remove Direct Permission Set from User
+
+<api-endpoint method="DELETE" path="/admin/users/{user_id}/permission-sets/direct/{permission_set_id}" />
+
+Remove a direct permission set from a user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to update
+</ParamField>
+
+<ParamField path="permission_set_id" type="uuid" required>
+  The permission set ID to remove
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string">
+  Response status
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+---
+
+## Get User Effective Permissions
+
+<api-endpoint method="GET" path="/admin/users/{user_id}/permissions/effective" />
+
+Get user's effective permissions with breakdown by source (roles, direct sets, direct permissions).
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to query
+</ParamField>
+
+### Response
+
+<ResponseField name="user_id" type="uuid">
+  The user identifier
+</ResponseField>
+
+<ResponseField name="from_roles" type="array">
+  Permissions inherited from roles
+</ResponseField>
+
+<ResponseField name="from_direct_sets" type="array">
+  Permissions from directly assigned permission sets
+</ResponseField>
+
+<ResponseField name="from_direct_permissions" type="array">
+  Directly assigned permissions
+</ResponseField>
+
+<ResponseField name="effective" type="array">
+  Combined effective permissions (union of all sources)
+</ResponseField>
+
+---
+
+## Get User RBAC History
+
+<api-endpoint method="GET" path="/admin/users/{user_id}/rbac-history" />
+
+Get all RBAC changes related to a specific user.
+
+### Path Parameters
+
+<ParamField path="user_id" type="uuid" required>
+  The user ID to query
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="limit" type="integer" default="50">
+  Number of history entries to return (1-100)
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of entries to skip for pagination
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string">
+  Response status
+</ResponseField>
+
+<ResponseField name="user_id" type="string">
+  The user ID as a string
+</ResponseField>
+
+<ResponseField name="history" type="array">
+  Array of RBAC change events
+  <expandable>
+    <ResponseField name="id" type="string">
+      Audit log entry ID
+    </ResponseField>
+    <ResponseField name="entity_type" type="string">
+      Type of entity changed (e.g., "user", "role")
+    </ResponseField>
+    <ResponseField name="action" type="string">
+      Action performed
+    </ResponseField>
+    <ResponseField name="old_value" type="object" optional>
+      Previous value before change
+    </ResponseField>
+    <ResponseField name="new_value" type="object" optional>
+      New value after change
+    </ResponseField>
+    <ResponseField name="changed_by" type="string" optional>
+      User ID who made the change
+    </ResponseField>
+    <ResponseField name="changed_at" type="string">
+      ISO 8601 timestamp of change
+    </ResponseField>
+  </expandable>
+</ResponseField>

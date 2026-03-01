@@ -1,0 +1,209 @@
+---
+title: User Management
+description: Manage users, assign roles, and control authentication methods
+icon: users
+---
+
+The User Management interface provides centralized control over user access, role assignments, and authentication methods for your organization.
+
+## Authentication Methods
+
+Control which login providers are available to users in your organization.
+
+<Steps>
+  <Step title="Navigate to User Management">
+    From the sidebar, go to **Settings** > **User Management**.
+  </Step>
+  
+  <Step title="Toggle Authentication Providers">
+    In the **Authentication Methods** section, enable or disable providers:
+    - **Basic Authentication** - Email and password login
+    - **Google Authentication** - Sign in with Google
+    - **GitHub Authentication** - Sign in with GitHub
+    - **Microsoft Authentication** - Sign in with Microsoft
+  </Step>
+  
+  <Step title="Save Changes">
+    Click **Save** to apply your authentication configuration.
+  </Step>
+</Steps>
+
+<Warning>
+  Disabling a provider prevents new login sessions but doesn't affect existing sessions. Users already logged in will remain authenticated until they sign out.
+</Warning>
+
+## Managing Users
+
+### View All Users
+
+The user table displays all registered users with their assigned roles. You can:
+
+- **Search** by email address
+- **Paginate** through large user lists (10, 25, 50, or 100 per page)
+- **Sort** by any column
+
+### Edit User Permissions
+
+Users can be assigned multiple roles and permission levels through three mechanisms:
+
+<Tabs>
+  <Tab title="Roles">
+    Roles are the primary way to grant permissions. Each role contains multiple permission sets.
+    
+    <Steps>
+      <Step title="Open Edit Modal">
+        Click the **EDIT** button next to any user.
+      </Step>
+      
+      <Step title="Select Roles">
+        In the **Roles** tab, check or uncheck roles to assign them.
+        
+        <Info>
+          Every user must have at least one role assigned.
+        </Info>
+      </Step>
+      
+      <Step title="Save Changes">
+        Click **Save Changes** to update the user's roles.
+      </Step>
+    </Steps>
+  </Tab>
+  
+  <Tab title="Direct Permission Sets">
+    Grant permission sets directly without assigning a full role.
+    
+    <Steps>
+      <Step title="Open Edit Modal">
+        Click the **EDIT** button next to any user.
+      </Step>
+      
+      <Step title="Select Permission Sets">
+        Switch to the **Direct Sets** tab and select individual permission sets.
+      </Step>
+      
+      <Step title="Save Changes">
+        Click **Save Changes** to apply the direct permission sets.
+      </Step>
+    </Steps>
+    
+    <Note>
+      Direct permission sets bypass roles and grant permissions immediately.
+    </Note>
+  </Tab>
+  
+  <Tab title="Direct Permissions">
+    Grant individual permissions for fine-grained control.
+    
+    <Steps>
+      <Step title="Open Edit Modal">
+        Click the **EDIT** button next to any user.
+      </Step>
+      
+      <Step title="Select Permissions">
+        Switch to the **Direct Perms** tab. Permissions are grouped by category:
+        - User Management
+        - Role Management
+        - Integration Management
+        - AI/ML Configuration
+        - System Settings
+      </Step>
+      
+      <Step title="Use Category Toggles">
+        Click the checkbox next to a category name to select/deselect all permissions in that category.
+      </Step>
+      
+      <Step title="Save Changes">
+        Click **Save Changes** to apply the direct permissions.
+      </Step>
+    </Steps>
+    
+    <Warning>
+      Direct permissions bypass both roles and permission sets. Use sparingly for exceptional cases.
+    </Warning>
+  </Tab>
+</Tabs>
+
+### Effective Permissions
+
+A user's effective permissions are calculated as the **union** of:
+1. All permissions from assigned roles
+2. All permissions from direct permission sets
+3. All direct permissions
+
+<Info>
+  If you edit your own permissions, they'll take effect immediately after saving.
+</Info>
+
+### Delete User
+
+<Steps>
+  <Step title="Click Delete">
+    Click the **DELETE** button next to the user you want to remove.
+  </Step>
+  
+  <Step title="Confirm Deletion">
+    A confirmation modal will appear. Review the user's email address.
+  </Step>
+  
+  <Step title="Confirm">
+    Click **Delete** to permanently remove the user.
+  </Step>
+</Steps>
+
+<Warning>
+  User deletion is permanent and cannot be undone. All user data will be removed from the system.
+</Warning>
+
+## Pagination and Search
+
+### Search Users
+
+Use the search box to filter users by email address. Results update automatically as you type (300ms debounce).
+
+### Change Page Size
+
+Select from the dropdown to show 10, 25, 50, or 100 users per page. The view resets to page 1 when changing the page size.
+
+### Navigate Pages
+
+Use the pagination controls at the bottom to move between pages:
+- **Previous/Next** buttons
+- **Page number** buttons (shows current page and adjacent pages)
+- **First/Last** page shortcuts
+
+## Required Permissions
+
+| Action | Permission Required |
+|--------|--------------------|
+| View users | `user.view` |
+| Edit user roles | `user.edit` |
+| Delete user | `user.delete` |
+| Modify auth methods | `auth.edit` |
+
+<Check>
+  If you don't have a required permission, the corresponding button will not appear in the UI.
+</Check>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Roles First" icon="layer-group">
+    Assign permissions through roles rather than direct assignments. This makes auditing and bulk changes easier.
+  </Card>
+  
+  <Card title="Least Privilege" icon="shield-check">
+    Grant users only the permissions they need to perform their job functions.
+  </Card>
+  
+  <Card title="Regular Audits" icon="clipboard-check">
+    Periodically review user permissions to ensure they're still appropriate.
+  </Card>
+  
+  <Card title="Test Changes" icon="flask">
+    When editing your own permissions, make sure you retain administrative access.
+  </Card>
+</CardGroup>
+
+## API Reference
+
+See the [Users API](/api/admin/users) documentation for programmatic user management.

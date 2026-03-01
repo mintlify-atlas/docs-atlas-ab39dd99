@@ -1,0 +1,271 @@
+---
+title: "LLM Providers"
+description: "Configure LLM providers including Anthropic, OpenAI, Google, and Ollama for your AI agent"
+---
+
+The AI agent supports multiple LLM providers through a factory-based configuration system. You can configure providers through the database or use environment variables for default settings.
+
+## Supported Providers
+
+The agent supports the following LLM providers:
+
+- **Anthropic** (Claude models)
+- **OpenAI** (GPT models)
+- **Google** (Gemini models)
+- **Ollama** (local models)
+- **Custom** (OpenAI-compatible or Ollama-compatible APIs)
+
+## Provider Configuration
+
+### Anthropic
+
+Configure Anthropic's Claude models:
+
+```python
+provider_config = {
+    "provider_type": "anthropic",
+    "model_id": "claude-3-opus-20240229",
+    "api_key": "your-api-key",
+    "temperature": 0.33,
+    "max_retries": 2
+}
+```
+
+**Requirements:**
+- Install `langchain-anthropic` package
+- Provide a valid API key
+- Optional: Specify a custom `base_url` for proxy endpoints
+
+**Available Models:**
+- `claude-3-opus-20240229`
+- `claude-3-sonnet-20240229`
+- `claude-3-haiku-20240307`
+
+### OpenAI
+
+Configure OpenAI's GPT models:
+
+```python
+provider_config = {
+    "provider_type": "openai",
+    "model_id": "gpt-4",
+    "api_key": "your-api-key",
+    "temperature": 0.33,
+    "max_retries": 2,
+    "provider_config": {
+        "organization_id": "org-xxxxx"  # Optional
+    }
+}
+```
+
+**Requirements:**
+- Install `langchain-openai` package
+- Provide a valid API key
+- Optional: Organization ID for enterprise accounts
+- Optional: Custom `base_url` for Azure OpenAI or proxy endpoints
+
+**Available Models:**
+- `gpt-4`
+- `gpt-4-turbo`
+- `gpt-3.5-turbo`
+
+### Google (Gemini)
+
+Configure Google's Gemini models:
+
+```python
+provider_config = {
+    "provider_type": "google",
+    "model_id": "gemini-2.5-pro",
+    "api_key": "your-google-api-key",
+    "temperature": 0.33,
+    "max_retries": 2
+}
+```
+
+**Requirements:**
+- Install `langchain-google-genai` package
+- Provide a valid Google API key
+
+**Environment Variables:**
+```bash
+GEMINI_API_KEY=your-google-api-key
+```
+
+**Available Models:**
+- `gemini-2.5-pro`
+- `gemini-1.5-pro`
+- `gemini-1.0-pro`
+
+### Ollama (Default Provider)
+
+Ollama is the default provider for local model deployment:
+
+```python
+provider_config = {
+    "provider_type": "custom",
+    "model_id": "gpt-oss:20b",
+    "base_url": "http://localhost:11434",
+    "temperature": 0.33,
+    "max_retries": 2
+}
+```
+
+**Environment Variables:**
+```bash
+OLLAMA_API_URL=http://localhost:11434
+DEFAULT_OLLAMA_MODEL=gpt-oss:20b
+```
+
+**No API Key Required:** Ollama runs locally and doesn't require authentication.
+
+### Custom Providers
+
+The agent supports custom providers that implement OpenAI-compatible or Ollama-compatible APIs:
+
+```python
+provider_config = {
+    "provider_type": "custom",
+    "model_id": "custom-model-name",
+    "base_url": "https://custom-endpoint.com",
+    "api_key": "optional-key",
+    "provider_config": {
+        "openai_compatible": True,  # Use OpenAI client
+        "auth_type": "bearer"  # Options: "bearer", "none"
+    }
+}
+```
+
+**OpenAI-Compatible APIs:**
+Set `openai_compatible: True` in `provider_config` to use the OpenAI client for endpoints that support the `/v1/chat/completions` format.
+
+**Ollama-Compatible APIs:**
+Leave `openai_compatible: False` (default) for Ollama-style endpoints.
+
+## Default LLM Settings
+
+The agent uses these default settings defined in `src/copilot/llm_factory.py:42-43`:
+
+```python
+DEFAULT_TEMPERATURE = 0.33
+DEFAULT_MAX_RETRIES = 2
+```
+
+### Temperature
+
+Controls randomness in model responses:
+- **0.0**: Deterministic, focused responses
+- **0.33**: Balanced (default)
+- **1.0**: More creative, varied responses
+
+### Max Retries
+
+Number of retry attempts for failed API calls. Default is `2`.
+
+## Environment Variables
+
+Configure default settings using environment variables:
+
+```bash
+# Gemini API Key (optional)
+GEMINI_API_KEY=your-google-api-key
+
+# Ollama Configuration (default provider)
+OLLAMA_API_URL=http://localhost:11434
+DEFAULT_OLLAMA_MODEL=gpt-oss:20b
+```
+
+## Factory Function
+
+The `create_llm_from_provider` function (defined in `src/copilot/llm_factory.py:46`) creates LLM instances:
+
+```python
+from src.copilot.llm_factory import create_llm_from_provider
+
+llm = create_llm_from_provider(
+    provider_type="anthropic",
+    model_id="claude-3-opus-20240229",
+    api_key="your-api-key",
+    base_url=None,  # Optional
+    provider_config={},  # Optional
+    temperature=0.33,
+    max_retries=2
+)
+```
+
+## Error Handling
+
+The factory function raises `ValueError` in the following cases:
+
+1. **Missing Dependencies:**
+   ```
+   ValueError: Anthropic provider requires langchain-anthropic package.
+   Install with: pip install langchain-anthropic
+   ```
+
+2. **Missing API Key:**
+   ```
+   ValueError: Anthropic provider requires an API key
+   ```
+
+3. **Missing Base URL (Custom Provider):**
+   ```
+   ValueError: Custom provider requires a base URL
+   ```
+
+4. **Unsupported Provider:**
+   ```
+   ValueError: Unsupported provider type: unknown-provider
+   ```
+
+## Installation Requirements
+
+Install required packages based on your chosen provider:
+
+```bash
+# Anthropic
+pip install langchain-anthropic
+
+# OpenAI
+pip install langchain-openai
+
+# Google Gemini
+pip install langchain-google-genai
+
+# Ollama (always available)
+pip install langchain-ollama
+```
+
+## Caching and Performance
+
+The agent caches LLM instances for performance (see `src/copilot/graph.py:85-86`):
+
+```python
+_cached_llm: Optional[BaseChatModel] = None
+_cached_llm_config_hash: Optional[str] = None
+```
+
+The cache is refreshed when provider configuration changes, based on a hash of:
+- `provider_type`
+- `model_id`
+- `base_url`
+- `temperature`
+
+## Setting LLM Configuration
+
+Use `set_llm_from_config` (defined in `src/copilot/graph.py:89`) before invoking the agent:
+
+```python
+from src.copilot.graph import set_llm_from_config
+
+set_llm_from_config(
+    provider_type="anthropic",
+    model_id="claude-3-opus-20240229",
+    api_key="your-api-key",
+    base_url=None,
+    provider_config={},
+    temperature=0.33
+)
+```
+
+This configures the global LLM instance that the agent will use for all subsequent invocations.

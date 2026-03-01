@@ -1,0 +1,336 @@
+---
+title: "Role Management"
+description: "Create, update, and manage roles with permission sets"
+---
+
+## List Roles
+
+<api-endpoint method="GET" path="/roles" />
+
+Get all roles in the system.
+
+### Response
+
+<ResponseField name="roles" type="array">
+  Array of role objects
+  <expandable>
+    <ResponseField name="id" type="string">
+      Unique role identifier (UUID as string)
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Role name
+    </ResponseField>
+    <ResponseField name="description" type="string" optional>
+      Role description
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+---
+
+## Get Role Details
+
+<api-endpoint method="GET" path="/roles/{role_id}" />
+
+Get a specific role with its associated permission sets.
+
+### Path Parameters
+
+<ParamField path="role_id" type="uuid" required>
+  The role ID to retrieve
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string">
+  Unique role identifier (UUID as string)
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Role name
+</ResponseField>
+
+<ResponseField name="description" type="string" optional>
+  Role description
+</ResponseField>
+
+<ResponseField name="permission_sets" type="array">
+  Array of permission sets assigned to this role
+  <expandable>
+    <ResponseField name="id" type="string">
+      Permission set identifier
+    </ResponseField>
+    <ResponseField name="code" type="string">
+      Permission set code
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Permission set name
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+---
+
+## Create Role
+
+<api-endpoint method="POST" path="/roles" />
+
+Create a new role with optional permission sets.
+
+### Body Parameters
+
+<ParamField body="name" type="string" required>
+  The name of the role (must be unique)
+</ParamField>
+
+<ParamField body="description" type="string" optional>
+  A description of the role
+</ParamField>
+
+<ParamField body="permission_set_ids" type="array" optional>
+  Array of permission set UUIDs to assign to the role
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string">
+  Unique role identifier (UUID as string)
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Role name
+</ResponseField>
+
+<ResponseField name="description" type="string" optional>
+  Role description
+</ResponseField>
+
+---
+
+## Update Role
+
+<api-endpoint method="PUT" path="/roles/{role_id}" />
+
+Update an existing role's name, description, or permission sets.
+
+### Path Parameters
+
+<ParamField path="role_id" type="uuid" required>
+  The role ID to update
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="name" type="string" optional>
+  The new name for the role
+</ParamField>
+
+<ParamField body="description" type="string" optional>
+  The new description for the role
+</ParamField>
+
+<ParamField body="permission_set_ids" type="array" optional>
+  Array of permission set UUIDs to replace existing permission sets
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="string">
+  Unique role identifier (UUID as string)
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Role name
+</ResponseField>
+
+<ResponseField name="description" type="string" optional>
+  Role description
+</ResponseField>
+
+---
+
+## Delete Role
+
+<api-endpoint method="DELETE" path="/roles/{role_id}" />
+
+Soft delete a role from the system.
+
+### Path Parameters
+
+<ParamField path="role_id" type="uuid" required>
+  The role ID to delete
+</ParamField>
+
+### Response
+
+Returns 204 No Content on success.
+
+---
+
+## List All Roles (Permissions API)
+
+<api-endpoint method="GET" path="/permissions/roles" />
+
+List all roles with their permission sets (from permissions router).
+
+### Response
+
+<ResponseField name="roles" type="array">
+  Array of role objects
+  <expandable>
+    <ResponseField name="id" type="uuid">
+      Unique role identifier
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Role name
+    </ResponseField>
+    <ResponseField name="description" type="string" optional>
+      Role description
+    </ResponseField>
+    <ResponseField name="created_at" type="string">
+      ISO 8601 timestamp of creation
+    </ResponseField>
+    <ResponseField name="updated_at" type="string">
+      ISO 8601 timestamp of last update
+    </ResponseField>
+    <ResponseField name="permission_sets" type="array">
+      Array of permission sets
+      <expandable>
+        <ResponseField name="id" type="uuid">
+          Permission set identifier
+        </ResponseField>
+        <ResponseField name="code" type="string">
+          Permission set code
+        </ResponseField>
+        <ResponseField name="name" type="string">
+          Permission set name
+        </ResponseField>
+        <ResponseField name="description" type="string" optional>
+          Permission set description
+        </ResponseField>
+      </expandable>
+    </ResponseField>
+  </expandable>
+</ResponseField>
+
+---
+
+## Create Role (Permissions API)
+
+<api-endpoint method="POST" path="/permissions/roles" />
+
+Create a new role with permission set codes.
+
+### Body Parameters
+
+<ParamField body="name" type="string" required>
+  The name of the role (must be unique)
+</ParamField>
+
+<ParamField body="description" type="string" optional>
+  A description of the role
+</ParamField>
+
+<ParamField body="permission_set_codes" type="array" optional>
+  Array of permission set codes (e.g., ["admin", "user.view"]) to assign to the role
+</ParamField>
+
+### Response
+
+Same as [List All Roles](#list-all-roles-permissions-api) individual role object.
+
+---
+
+## Get Role (Permissions API)
+
+<api-endpoint method="GET" path="/permissions/roles/{id}" />
+
+Get a specific role by ID with permission sets.
+
+### Path Parameters
+
+<ParamField path="id" type="uuid" required>
+  The role ID to retrieve
+</ParamField>
+
+### Response
+
+Same as [List All Roles](#list-all-roles-permissions-api) individual role object.
+
+---
+
+## Update Role (Permissions API)
+
+<api-endpoint method="PUT" path="/permissions/roles/{id}" />
+
+Update an existing role.
+
+### Path Parameters
+
+<ParamField path="id" type="uuid" required>
+  The role ID to update
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="name" type="string" optional>
+  The new name for the role
+</ParamField>
+
+<ParamField body="description" type="string" optional>
+  The new description for the role
+</ParamField>
+
+<ParamField body="permission_set_codes" type="array" optional>
+  Array of permission set codes to replace existing permission sets
+</ParamField>
+
+### Response
+
+Same as [List All Roles](#list-all-roles-permissions-api) individual role object.
+
+---
+
+## Delete Role (Permissions API)
+
+<api-endpoint method="DELETE" path="/permissions/roles/{id}" />
+
+Delete a role from the system.
+
+### Path Parameters
+
+<ParamField path="id" type="uuid" required>
+  The role ID to delete
+</ParamField>
+
+### Response
+
+Returns 204 No Content on success.
+
+---
+
+## Get Role Effective Permissions
+
+<api-endpoint method="GET" path="/permissions/roles/{id}/permissions" />
+
+Get all effective permissions for a role (aggregated from all permission sets).
+
+### Path Parameters
+
+<ParamField path="id" type="uuid" required>
+  The role ID to query
+</ParamField>
+
+### Response
+
+<ResponseField name="role_id" type="uuid">
+  The role identifier
+</ResponseField>
+
+<ResponseField name="role_name" type="string">
+  The role name
+</ResponseField>
+
+<ResponseField name="permissions" type="array">
+  Array of permission codes (e.g., ["user.view", "user.edit"])
+</ResponseField>

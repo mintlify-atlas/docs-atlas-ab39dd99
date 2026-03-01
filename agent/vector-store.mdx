@@ -1,0 +1,362 @@
+---
+title: "Vector Store"
+description: "Configure Qdrant vector store for semantic search and incident retrieval"
+---
+
+The AI agent uses Qdrant as its vector store for semantic search over incident reports. This enables intelligent retrieval based on similarity and metadata filtering.
+
+## Overview
+
+The vector store configuration is defined in `src/copilot/tools/_base.py` and includes:
+
+- **Vector Database**: Qdrant for high-performance similarity search
+- **Embeddings**: HuggingFace `all-MiniLM-L6-v2` model
+- **Collection Management**: Dynamic collection switching based on active datasets
+
+## Environment Variables
+
+Configure Qdrant connection using these environment variables:
+
+```bash
+# Required: PostgreSQL database URL (used by main application)
+VECTOR_DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+
+# Qdrant Configuration
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=your-qdrant-api-key  # Optional for local deployments
+QDRANT_COLLECTION_NAME=past_issues_v2  # Default collection
+```
+
+### Required Variables
+
+<ParamField path="VECTOR_DATABASE_URL" type="string" required>
+  PostgreSQL connection string. Used for checkpointing and dataset version tracking.
+  
+  **Format:** `postgresql://user:password@host:port/database`
+</ParamField>
+
+### Optional Variables
+
+<ParamField path="QDRANT_URL" type="string" default="http://localhost:6333">
+  Qdrant server URL. Can be a local instance or Qdrant Cloud endpoint.
+</ParamField>
+
+<ParamField path="QDRANT_API_KEY" type="string">
+  API key for Qdrant authentication. Required for Qdrant Cloud, optional for local deployments.
+</ParamField>
+
+<ParamField path="QDRANT_COLLECTION_NAME" type="string" default="past_issues_v2">
+  Default collection name for incident reports. Can be overridden by active dataset versions.
+</ParamField>
+
+## Qdrant Client Initialization
+
+The Qdrant client is lazily initialized (see `src/copilot/tools/_base.py:109-126`):
+
+```python
+def _get_qdrant_client() -> QdrantClient:
+    """Get or create the Qdrant client with authentication if configured."""
+    global _qdrant_client
+    if _qdrant_client is None:
+        qdrant_url = config.QDRANT_URL
+        qdrant_api_key = config.QDRANT_API_KEY
+
+        if not qdrant_url:
+            raise ValueError("QDRANT_URL environment variable is not set")
+
+        # Initialize with API key if available
+        if qdrant_api_key:
+            _qdrant_client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
+        else:
+            logger.warning("QDRANT_API_KEY not set - connecting without authentication")
+            _qdrant_client = QdrantClient(url=qdrant_url)
+
+    return _qdrant_client
+```
+
+**Key Features:**
+- Singleton pattern for connection reuse
+- Automatic authentication when API key is provided
+- Warning logged when connecting without authentication
+
+## Embedding Model
+
+The agent uses HuggingFace embeddings (defined in `src/copilot/tools/_base.py:97-106`):
+
+```python
+def _get_embeddings() -> HuggingFaceEmbeddings:
+    """Get or create the embeddings model."""
+    global _embeddings
+    if _embeddings is None:
+        _embeddings = HuggingFaceEmbeddings(
+            model_name="all-MiniLM-L6-v2",
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+    return _embeddings
+```
+
+### Model Specifications
+
+<ResponseField name="model_name" type="string">
+  `all-MiniLM-L6-v2` - A lightweight, efficient sentence transformer
+</ResponseField>
+
+<ResponseField name="device" type="string">
+  `cpu` - Runs on CPU for broad compatibility
+</ResponseField>
+
+<ResponseField name="normalize_embeddings" type="boolean">
+  `true` - Embeddings are normalized for cosine similarity
+</ResponseField>
+
+**Performance:**
+- **Dimension**: 384
+- **Max Tokens**: 256
+- **Speed**: Fast inference on CPU
+- **Quality**: Good balance between speed and accuracy
+
+## Vector Store Creation
+
+The vector store is created using LangChain's Qdrant integration (see `src/copilot/tools/_base.py:170-179`):
+
+```python
+def _get_vector_store() -> QdrantVectorStore:
+    """Get or create the vector store."""
+    global _vector_store
+    if _vector_store is None:
+        _vector_store = QdrantVectorStore(
+            client=_get_qdrant_client(),
+            collection_name=_get_active_collection_name(),
+            embedding=_get_embeddings(),
+        )
+    return _vector_store
+```
+
+## Dynamic Collection Management
+
+The agent supports switching between different incident dataset versions (defined in `src/copilot/tools/_base.py:129-156`):
+
+```python
+def _get_active_collection_name() -> str:
+    """Resolve the active dataset collection name from the DB.
+    
+    Falls back to the config default (past_issues_v2) when no active
+    version exists or the DB is unreachable.
+    """
+    try:
+        import sqlalchemy as sa
+        from sqlalchemy import create_engine, text
+        import os
+
+        db_url = os.getenv("DATABASE_URL", "")
+        if not db_url:
+            return config.QDRANT_COLLECTION_NAME
+
+        # Use a sync engine for this quick lookup
+        sync_url = db_url.replace("postgresql+asyncpg", "postgresql")
+        engine = create_engine(sync_url)
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT collection_name FROM incident_dataset_versions WHERE is_active = true LIMIT 1")
+            ).fetchone()
+            if row:
+                return row[0]
+    except Exception:
+        pass
+    return config.QDRANT_COLLECTION_NAME
+```
+
+**Fallback Behavior:**
+1. Checks database for active collection
+2. Falls back to `QDRANT_COLLECTION_NAME` if database is unavailable
+3. Returns `past_issues_v2` by default
+
+### Cache Invalidation
+
+Invalidate the cache after activating a new dataset version:
+
+```python
+from src.copilot.tools._base import invalidate_vector_store_cache
+
+# After activating a new dataset version
+invalidate_vector_store_cache()
+```
+
+This function (defined in `src/copilot/tools/_base.py:159-167`) resets the cached vector store and retriever:
+
+```python
+def invalidate_vector_store_cache():
+    """Reset the cached vector store and retriever globals.
+    
+    Called by the service layer after version activation so the copilot
+    picks up the new collection on the next query.
+    """
+    global _vector_store, _retriever
+    _vector_store = None
+    _retriever = None
+```
+
+## Metadata Schema
+
+The vector store includes metadata for filtering and enrichment (defined in `src/copilot/tools/_base.py:26-68`):
+
+```python
+METADATA_FIELD_INFO = [
+    AttributeInfo(
+        name="incident_id",
+        description="The unique identifier for an incident",
+        type="string",
+    ),
+    AttributeInfo(
+        name="incident_title",
+        description="The high-level title of the incident",
+        type="string",
+    ),
+    AttributeInfo(
+        name="impacted_application",
+        description="The name of the software or system that was impacted",
+        type="string",
+    ),
+    AttributeInfo(
+        name="root_cause",
+        description="A summary of the root cause of the incident",
+        type="string",
+    ),
+    AttributeInfo(
+        name="mitigation",
+        description="The steps taken to resolve or mitigate the incident",
+        type="string",
+    ),
+    AttributeInfo(
+        name="accountable_party",
+        description="The team or entity responsible for the incident",
+        type="string",
+    ),
+    AttributeInfo(
+        name="source_system",
+        description="The system that reported the incident",
+        type="string",
+    ),
+    AttributeInfo(
+        name="repeat_incident",
+        description="A boolean indicating if this was a repeat incident",
+        type="string",
+    ),
+]
+```
+
+### Metadata Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `incident_id` | string | Unique identifier (e.g., `INC-2025-08-24-001`) |
+| `incident_title` | string | High-level title (e.g., `Swift Transfer Delay`) |
+| `impacted_application` | string | Affected system (e.g., `PayU Core Payments`) |
+| `root_cause` | string | Summary of root cause |
+| `mitigation` | string | Resolution steps |
+| `accountable_party` | string | Responsible team (e.g., `DevOps/CI-CD`) |
+| `source_system` | string | Reporting system (e.g., `PagerDuty`) |
+| `repeat_incident` | string | `"True."` or `"False."` |
+
+## Self-Query Retriever
+
+The agent uses a self-query retriever for intelligent search (see `src/copilot/tools/_base.py:182-205`):
+
+```python
+def _get_retriever() -> Optional[SelfQueryRetriever]:
+    """Get or create the self-query retriever."""
+    global _retriever, _initialization_error
+
+    if _retriever is not None:
+        return _retriever
+
+    if _initialization_error is not None:
+        return None
+
+    try:
+        _retriever = SelfQueryRetriever.from_llm(
+            llm=_get_llm(),
+            vectorstore=_get_vector_store(),
+            document_contents=DOCUMENT_CONTENT_DESCRIPTION,
+            metadata_field_info=METADATA_FIELD_INFO,
+            structured_query_translator=QdrantTranslator(metadata_key="metadata"),
+            structured_query_parser=StructuredQueryOutputParser.from_components(),
+        )
+        return _retriever
+    except Exception as e:
+        _initialization_error = str(e)
+        logger.error(f"Error initializing retriever: {e}")
+        return None
+```
+
+**Features:**
+- Automatically extracts filters from natural language queries
+- Combines semantic search with metadata filtering
+- Uses Qdrant's native filtering capabilities
+
+## Connection Testing
+
+Test your Qdrant connection:
+
+```python
+from src.copilot.tools._base import _get_qdrant_client
+
+client = _get_qdrant_client()
+print(f"Connected to Qdrant at {client._client.rest_uri}")
+
+# List collections
+collections = client.get_collections()
+print(f"Available collections: {[c.name for c in collections.collections]}")
+```
+
+## Troubleshooting
+
+### Connection Errors
+
+**Issue:** `ValueError: QDRANT_URL environment variable is not set`
+
+**Solution:** Set the `QDRANT_URL` in your `.env` file:
+```bash
+QDRANT_URL=http://localhost:6333
+```
+
+### Authentication Errors
+
+**Issue:** `401 Unauthorized` when connecting to Qdrant Cloud
+
+**Solution:** Ensure `QDRANT_API_KEY` is set correctly:
+```bash
+QDRANT_API_KEY=your-cloud-api-key
+```
+
+### Collection Not Found
+
+**Issue:** Collection `past_issues_v2` does not exist
+
+**Solution:** Create the collection or update `QDRANT_COLLECTION_NAME` to match an existing collection.
+
+## Performance Considerations
+
+1. **Connection Pooling**: The client uses a singleton pattern to avoid repeated connections
+2. **Embedding Cache**: Embeddings model is loaded once and reused
+3. **Lazy Initialization**: Components are created only when needed
+4. **CPU Inference**: Embeddings run on CPU for broad deployment compatibility
+
+## Local Development Setup
+
+Run Qdrant locally with Docker:
+
+```bash
+docker run -p 6333:6333 -p 6334:6334 \
+  -v $(pwd)/qdrant_storage:/qdrant/storage:z \
+  qdrant/qdrant
+```
+
+Then configure your `.env`:
+
+```bash
+QDRANT_URL=http://localhost:6333
+QDRANT_COLLECTION_NAME=past_issues_v2
+# No API key needed for local development
+```

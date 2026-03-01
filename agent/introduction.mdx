@@ -1,0 +1,164 @@
+---
+title: "Introduction"
+description: "Learn about the AI-powered incident resolution agent and its capabilities"
+---
+
+## Overview
+
+The Incident Resolution Agent is an AI-powered assistant designed to help teams quickly resolve incidents by searching through a knowledge base of past incidents. Built with LangGraph and powered by large language models, the agent provides intelligent, context-aware responses to incident-related queries.
+
+## What is the Agent?
+
+The agent is a conversational AI system that:
+
+- **Searches Past Incidents**: Retrieves relevant historical incident data using semantic search
+- **Provides Contextual Answers**: Generates responses based on verified knowledge and tool results
+- **Learns from Examples**: Uses golden examples to improve response quality
+- **Maintains Conversation State**: Remembers context across multiple turns in a conversation
+
+## Key Capabilities
+
+### Intelligent Query Understanding
+
+The agent analyzes user queries and automatically determines the best approach:
+
+- Recognizes specific incident IDs (e.g., `INC-2025-08-24-001`)
+- Understands problem descriptions and error messages
+- Identifies application/system-specific queries
+- Interprets time-based requests (e.g., "incidents from last week")
+
+### Multi-Tool Search
+
+The agent has access to four specialized search tools:
+
+<Card title="lookup_incident_by_id" icon="magnifying-glass">
+  Fast direct lookup for specific incident IDs
+</Card>
+
+<Card title="search_similar_incidents" icon="magnifying-glass-chart">
+  Semantic similarity search across all incident reports
+</Card>
+
+<Card title="get_incidents_by_application" icon="server">
+  Find incidents affecting specific applications or systems
+</Card>
+
+<Card title="get_recent_incidents" icon="clock">
+  Retrieve incidents from a specific timeframe
+</Card>
+
+### Query Rewriting
+
+Before calling tools, the agent automatically rewrites conversational queries into optimized search terms:
+
+```
+User: "hey how to solve the issue with loan emi?"
+Agent Query: "Loan EMI issue"
+
+User: "tell me about this issue INC-2025-08-24-001"
+Agent Query: incident_id="INC-2025-08-24-001"
+```
+
+### Golden Example Enhancement
+
+The agent searches for similar past conversations (golden examples) and uses them to improve response quality. This ensures consistent, high-quality answers based on verified resolutions.
+
+### Conversation Memory
+
+Using PostgreSQL-backed checkpointing, the agent maintains conversation state:
+
+- Remembers previous messages in the conversation
+- Can answer follow-up questions without re-searching
+- Maintains session continuity across API calls
+
+## Use Cases
+
+### Incident Research
+
+```
+User: "What caused the payment gateway timeout last week?"
+Agent: [Searches recent incidents → Returns relevant incident details]
+```
+
+### Problem Resolution
+
+```
+User: "How do I fix HTTP 403 errors in PayU?"
+Agent: [Searches similar incidents → Provides resolution steps]
+```
+
+### Specific Incident Lookup
+
+```
+User: "Show me incident INC-2025-08-24-001"
+Agent: [Direct lookup → Returns complete incident report]
+```
+
+### Application Monitoring
+
+```
+User: "What incidents affected the Settlement & Reporting system?"
+Agent: [Application search → Lists all related incidents]
+```
+
+## Architecture Highlights
+
+<Info>
+The agent is built on **LangGraph**, a framework for building stateful, multi-actor applications with LLMs. Learn more about the architecture in the [Architecture](/agent/architecture) section.
+</Info>
+
+### Key Components
+
+1. **State Management**: TypedDict-based state schema with message history
+2. **Node Functions**: Modular processing units (LLM calls, tool execution, title generation)
+3. **Conditional Routing**: Smart decision-making about when to use tools
+4. **Persistent Checkpointing**: PostgreSQL-backed conversation memory
+
+### Technology Stack
+
+- **LangGraph**: State graph orchestration
+- **LangChain**: LLM integration and tool binding
+- **Qdrant**: Vector database for semantic search
+- **PostgreSQL**: Conversation state persistence
+- **Langfuse**: Optional observability and tracing
+
+## Configuration
+
+The agent supports multiple LLM providers:
+
+- **Anthropic** (Claude models)
+- **OpenAI** (GPT models)
+- **Google** (Gemini models)
+- **Custom** (Any OpenAI-compatible API)
+- **Ollama** (Local models)
+
+Default settings are defined in `src/copilot/config.py:51`:
+
+```python
+DEFAULT_LLM_TEMPERATURE = 0.33
+DEFAULT_LLM_MAX_RETRIES = 2
+```
+
+## Response Guidelines
+
+The agent follows strict response guidelines:
+
+- **Cite Sources**: Always references incident IDs when using tool data
+- **No Fabrication**: Never makes up information
+- **Concise Output**: Provides clear, factual responses
+- **Table Limits**: Never generates tables with more than 4 columns
+
+<Warning>
+The agent will not commit files that likely contain secrets (.env, credentials.json, etc.) and will warn users if they attempt to do so.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="diagram-project" href="/agent/architecture">
+    Explore the LangGraph state machine and node structure
+  </Card>
+  <Card title="Workflow" icon="flow" href="/agent/workflow">
+    Understand how queries are processed end-to-end
+  </Card>
+</CardGroup>

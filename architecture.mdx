@@ -1,0 +1,385 @@
+---
+title: Architecture
+description: Understanding Support Bot's system design, components, and data flow
+---
+
+# System Architecture
+
+Support Bot is built with a modern, scalable architecture that separates concerns between the frontend, backend, AI agent, and data storage layers. This design enables high performance, maintainability, and flexibility in deployment.
+
+## High-Level Overview
+
+The system consists of four primary layers:
+
+1. **Presentation Layer**: React-based web interface
+2. **API Layer**: FastAPI backend with RESTful endpoints
+3. **Agent Layer**: LangGraph-powered AI copilot
+4. **Data Layer**: PostgreSQL, pgvector, and Qdrant databases
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     React Frontend                          │
+│              (Vite + TailwindCSS + React 19)               │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ HTTP/REST API
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   FastAPI Backend                           │
+│         (Authentication, RBAC, API Routes)                  │
+└───┬─────────────────┬───────────────────┬───────────────────┘
+    │                 │                   │
+    ▼                 ▼                   ▼
+┌─────────┐    ┌──────────────┐    ┌──────────────┐
+│PostgreSQL│    │  LangGraph   │    │   Qdrant     │
+│  (Main)  │    │    Agent     │    │  (Vectors)   │
+└─────────┘    └──────┬───────┘    └──────────────┘
+                      │
+                      ▼
+              ┌──────────────┐
+              │  pgvector    │
+              │ (Checkpoints)│
+              └──────────────┘
+```
+
+## Core Components
+
+### 1. Frontend (React Application)
+
+The frontend provides an intuitive user interface for interacting with Support Bot.
+
+**Technology Stack:**
+- **React 19**: Modern React with concurrent features
+- **Vite**: Fast build tool and development server
+- **TailwindCSS 4**: Utility-first CSS framework
+- **React Router 7**: Client-side routing
+- **Marked**: Markdown rendering for AI responses
+- **DOMPurify**: XSS protection for rendered content
+
+**Key Features:**
+- Real-time chat interface with streaming responses
+- Markdown rendering for formatted AI output
+- OAuth integration for GitHub, Google, and Microsoft
+- Role-based UI elements based on user permissions
+- Dark/light theme support
+- Responsive design for mobile and desktop
+
+**File Structure:**
+```
+frontend/
+├── src/
+│   ├── components/     # Reusable UI components
+│   ├── pages/          # Route-level components
+│   ├── hooks/          # Custom React hooks
+│   └── utils/          # Helper functions
+└── package.json
+```
+
+### 2. Backend (FastAPI Application)
+
+The backend serves as the API gateway and orchestrates all business logic.
+
+**Technology Stack:**
+- **FastAPI 0.115**: Modern async web framework
+- **Uvicorn**: ASGI server
+- **SQLAlchemy 2.0**: ORM with async support
+- **Pydantic 2.12**: Data validation and settings management
+- **Alembic**: Database migrations
+- **Python-JOSE**: JWT token handling
+- **Passlib**: Password hashing with bcrypt
+
+**Key Modules:**
+
+**Authentication & Authorization** (`src/api/auth/`):
+- OAuth 2.0 providers (Google, GitHub, Microsoft)
+- JWT token generation and validation
+- Role-based access control (RBAC)
+- Permission management
+
+**API Routes** (`src/api/routers/`):
+- `/auth`: Authentication endpoints
+- `/admin`: User and system administration
+- `/chats`: Chat session management
+- `/roles`: Role and permission management
+- `/knowledge-base`: Incident ingestion and management
+- `/llm-providers`: LLM configuration
+- `/settings`: System settings
+- `/integrations`: Third-party integrations
+- `/feedback`: User feedback collection
+
+**Database Layer** (`src/api/db/`):
+- SQLAlchemy models for all entities
+- Alembic migrations for schema management
+- Connection pooling and session management
+
+**File Structure:**
+```
+src/api/
+├── auth/               # Authentication logic
+│   └── providers/      # OAuth providers
+├── routers/            # API endpoint handlers
+├── schemas/            # Pydantic models
+├── services/           # Business logic
+├── db/                 # Database models & migrations
+│   └── models.py       # SQLAlchemy models
+└── main.py             # FastAPI app entry point
+```
+
+### 3. AI Agent (LangGraph Copilot)
+
+The intelligent core that processes user queries and retrieves relevant information.
+
+**Technology Stack:**
+- **LangGraph 0.6**: Stateful agent orchestration
+- **LangChain 0.3**: LLM framework and utilities
+- **LangSmith & Langfuse**: Observability and tracing
+- **PostgreSQL Checkpointer**: Conversation state persistence
+
+**LLM Provider Support:**
+- **Anthropic**: Claude models (claude-3-5-sonnet, etc.)
+- **OpenAI**: GPT models (gpt-4, gpt-3.5-turbo, etc.)
+- **Google**: Gemini models (gemini-pro, etc.)
+- **Ollama**: Local models (llama2, mistral, etc.)
+
+**Agent Graph Flow:**
+
+1. **Entry Point**: User message received
+2. **Model Node**: 
+   - Search for similar golden examples
+   - Enhance system prompt with verified solutions
+   - Invoke LLM with tools bound
+3. **Conditional Edge**:
+   - If tool calls needed → Execute tools
+   - If response complete and no title → Generate title
+   - Otherwise → End
+4. **Tool Node**: Execute incident search tools
+5. **Title Generation**: Create conversation summary
+
+**Available Tools:**
+- `lookup_incident_by_id`: Retrieve specific incident by ID
+- `search_similar_incidents`: Semantic search for related issues
+- `get_incidents_by_application`: Filter by application/system
+- `get_recent_incidents`: Retrieve incidents by timeframe
+
+**File Structure:**
+```
+src/copilot/
+├── graph.py            # LangGraph agent definition
+├── tools/              # Search and retrieval tools
+├── guardrails/         # Safety and validation
+├── llm_factory.py      # LLM provider initialization
+├── config.py           # Agent configuration
+└── main.py             # CLI interface
+```
+
+**State Management:**
+
+The agent maintains conversation state using PostgreSQL checkpointing:
+```python
+class AgentState(TypedDict):
+    messages: Sequence[BaseMessage]  # Conversation history
+    title: Optional[str]              # Chat title
+    session_id: Optional[str]         # Session identifier
+    user_id: Optional[str]            # User context
+    langfuse_enabled: Optional[bool]  # Tracing flag
+    generate_title: Optional[bool]    # Title generation control
+```
+
+### 4. Data Layer
+
+Support Bot uses multiple specialized databases for different purposes.
+
+#### PostgreSQL (Main Database)
+
+**Purpose**: Store application data, users, sessions, and metadata
+
+**Port**: 5434 (Docker)
+
+**Schema** (key tables):
+- `users`: User accounts and profiles
+- `roles`: Role definitions
+- `permissions`: Permission assignments
+- `chat_sessions`: Chat conversation metadata
+- `chat_messages`: Individual messages
+- `incidents`: Incident metadata and references
+- `golden_examples`: Verified Q&A pairs
+- `llm_providers`: LLM configuration
+- `api_keys`: Encrypted provider credentials
+
+#### pgvector Database
+
+**Purpose**: Store LangGraph checkpoints and conversation state
+
+**Port**: 5433 (Docker)
+
+**Features**:
+- PostgreSQL with pgvector extension
+- Used by LangGraph's PostgresSaver
+- Enables conversation memory and state recovery
+- Supports vector similarity for embeddings
+
+#### Qdrant Vector Database
+
+**Purpose**: Semantic search over incident reports
+
+**Port**: 6333 (Docker)
+
+**Collections**:
+- `incidents`: Embedded incident descriptions and solutions
+- Metadata: incident_id, title, status, application, etc.
+
+**Embedding Model**:
+- Sentence Transformers (`all-MiniLM-L6-v2` or similar)
+- Generates 384/768-dimensional vectors
+- Optimized for semantic similarity search
+
+## Data Flow
+
+### Chat Interaction Flow
+
+1. **User sends message** via React frontend
+2. **Frontend** makes POST request to `/chats/{session_id}/messages`
+3. **Backend** validates user authentication and permissions
+4. **Backend** invokes LangGraph agent with message
+5. **Agent** searches golden examples for similar verified answers
+6. **Agent** decides if tools are needed:
+   - If yes: Calls appropriate search tools (Qdrant, PostgreSQL)
+   - If no: Uses conversation context and golden examples
+7. **Tools** retrieve relevant incidents from vector database
+8. **Agent** generates response using LLM + retrieved context
+9. **Backend** streams response chunks back to frontend
+10. **Frontend** renders markdown response in real-time
+11. **Backend** persists message and state to PostgreSQL
+
+### Incident Ingestion Flow
+
+1. **Admin uploads** incident data (CSV, JSON, or API)
+2. **Backend** validates and parses incident records
+3. **Embedding service** generates vector embeddings
+4. **Qdrant** stores vectors with metadata
+5. **PostgreSQL** stores incident metadata and references
+6. **System** updates search indices for immediate availability
+
+## Technology Stack Summary
+
+### Backend Dependencies
+
+From `pyproject.toml`:
+
+**Core Framework:**
+- FastAPI 0.115.5
+- Uvicorn 0.34.0
+- Pydantic 2.12.0
+
+**Database:**
+- SQLAlchemy 2.0.43
+- Psycopg 3.2.3
+- Alembic 1.17+
+- Asyncpg 0.30+
+
+**AI/ML:**
+- LangChain 0.3.27
+- LangGraph 0.6.8
+- LangChain-Anthropic 0.3+
+- LangChain-OpenAI 0.3+
+- LangChain-Google-GenAI 2.1.12
+- LangChain-Ollama 0.3.10
+
+**Vector Search:**
+- Qdrant-Client 1.12.1
+- Sentence-Transformers 3.1.1
+- PyTorch 2.8.0
+- Transformers 4.57.0
+
+**Monitoring:**
+- LangSmith 0.4.33
+- Langfuse 3.10.5+
+
+**Authentication:**
+- Python-JOSE 3.3.0
+- Passlib 1.7.4
+- Bcrypt (version less than 4.1)
+
+### Frontend Dependencies
+
+From `package.json`:
+
+**Core:**
+- React 19.1.1
+- React-DOM 19.1.0
+- React-Router-DOM 7.7.1
+
+**Build Tools:**
+- Vite 7.0.4
+- TypeScript 5.8.3
+
+**Styling:**
+- TailwindCSS 4.1.11
+- Motion 12.23.12 (animations)
+
+**Utilities:**
+- Marked 16.1.2 (markdown)
+- DOMPurify 3.2.6 (sanitization)
+- Fuse.js 6.6.2 (fuzzy search)
+
+## Deployment Considerations
+
+<Note>
+  Support Bot is designed to run on modern cloud infrastructure with support for containerization and horizontal scaling.
+</Note>
+
+**Recommended Setup:**
+- **Frontend**: Static hosting (Vercel, Netlify, S3+CloudFront)
+- **Backend**: Container service (ECS, Cloud Run, Kubernetes)
+- **Databases**: Managed services (RDS, Cloud SQL, Qdrant Cloud)
+- **LLM**: API-based providers or self-hosted Ollama
+
+**Scaling Considerations:**
+- Use connection pooling for PostgreSQL
+- Deploy multiple backend instances behind load balancer
+- Consider Redis for session caching
+- Monitor LLM API rate limits and costs
+- Use Qdrant collections sharding for large datasets
+
+## Security Architecture
+
+**Authentication Flow:**
+1. User authenticates via OAuth or username/password
+2. Backend generates JWT with user claims and permissions
+3. Frontend stores JWT securely (httpOnly cookies recommended)
+4. All API requests include JWT in Authorization header
+5. Backend validates JWT and checks permissions per route
+
+**Data Security:**
+- LLM API keys encrypted at rest using Fernet encryption
+- Passwords hashed with bcrypt (cost factor 12+)
+- HTTPS enforced for all external communications
+- CORS configured for trusted origins only
+- SQL injection prevented via parameterized queries
+- XSS prevented via DOMPurify sanitization
+
+**RBAC Model:**
+- Users assigned one or more roles
+- Roles have granular permissions
+- Endpoints protected by permission decorators
+- Admin-only routes for sensitive operations
+
+## Observability
+
+**Logging:**
+- Structured logging with Python's `logging` module
+- LLM calls traced via LangSmith/Langfuse
+- Request/response logging in FastAPI
+
+**Monitoring:**
+- Health check endpoint: `/health`
+- LangGraph execution traces
+- Database query performance via SQLAlchemy logs
+- Vector search performance metrics
+
+**Debugging:**
+- FastAPI auto-generated docs at `/docs`
+- Adminer for database inspection (port 8080)
+- LangGraph visualization tools
+- CLI mode for testing agent behavior
+
+For more details on specific components, explore the other sections of the documentation.

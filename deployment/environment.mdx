@@ -1,0 +1,503 @@
+---
+title: Environment Variables
+description: Configure API keys, database connections, and application settings
+---
+
+## Overview
+
+Support Bot uses environment variables for configuration. All settings are defined in a `.env` file that should be created from the provided `.env.example` template.
+
+<Warning>
+  Never commit `.env` files to version control. They contain sensitive credentials and API keys.
+</Warning>
+
+## Setup
+
+<Steps>
+  <Step title="Copy example file">
+    ```bash
+    cp .env.example .env
+    ```
+  </Step>
+
+  <Step title="Edit configuration">
+    Open `.env` in your editor and set required values:
+
+    ```bash
+    nano .env
+    # or
+    vim .env
+    ```
+  </Step>
+
+  <Step title="Verify configuration">
+    Ensure all required variables are set before starting the application.
+  </Step>
+</Steps>
+
+## Required Variables
+
+### AI Model Configuration
+
+<ParamField path="MODEL" type="string" required>
+  The AI model to use for chat completions.
+
+  **Examples**:
+  - `gemini-2.0-flash-exp` (Google Gemini)
+  - `gpt-4` (OpenAI)
+  - `claude-3-opus` (Anthropic)
+  - `llama3` (Ollama)
+
+  ```bash
+  MODEL=gemini-2.0-flash-exp
+  ```
+</ParamField>
+
+### Google AI (Gemini)
+
+<ParamField path="GEMINI_API_KEY" type="string">
+  Single API key for Google Gemini models.
+
+  ```bash
+  GEMINI_API_KEY=your_gemini_api_key_here
+  ```
+
+  Get your API key from [Google AI Studio](https://makersuite.google.com/app/apikey).
+</ParamField>
+
+<ParamField path="GEMINI_API_KEYS" type="string">
+  Multiple API keys for load balancing (comma-separated).
+
+  ```bash
+  GEMINI_API_KEYS=key1,key2,key3
+  ```
+
+  Use this when you have multiple Gemini API keys to distribute requests and avoid rate limits.
+</ParamField>
+
+<ParamField path="GOOGLE_API_KEY" type="string">
+  Alternative Google API key for backward compatibility.
+
+  ```bash
+  GOOGLE_API_KEY=your_google_api_key_here
+  ```
+</ParamField>
+
+<Note>
+  Only one of `GEMINI_API_KEY`, `GEMINI_API_KEYS`, or `GOOGLE_API_KEY` is required if using Gemini models.
+</Note>
+
+### Database Configuration
+
+<ParamField path="DATABASE_URL" type="string" required>
+  Async PostgreSQL connection string for the main database.
+
+  **Format**: `postgresql+asyncpg://user:password@host:port/database`
+
+  **Default (development)**:
+  ```bash
+  DATABASE_URL=postgresql+asyncpg://postgres:admin@localhost:5434/bot_db
+  ```
+
+  **Production example**:
+  ```bash
+  DATABASE_URL=postgresql+asyncpg://user:secure_password@db.example.com:5432/bot_db
+  ```
+</ParamField>
+
+<ParamField path="DATABASE_URL_SYNC" type="string" required>
+  Synchronous PostgreSQL connection string for migrations and scripts.
+
+  **Format**: `postgresql://user:password@host:port/database`
+
+  **Default (development)**:
+  ```bash
+  DATABASE_URL_SYNC=postgresql://postgres:admin@localhost:5434/bot_db
+  ```
+
+  Used by Alembic for database migrations.
+</ParamField>
+
+<ParamField path="VECTOR_DATABASE_URL" type="string" required>
+  PostgreSQL connection string for the pgvector database.
+
+  **Format**: `postgresql://user:password@host:port/database`
+
+  **Default (development)**:
+  ```bash
+  VECTOR_DATABASE_URL=postgresql://postgres:admin@localhost:5433/vector_db
+  ```
+
+  Stores vector embeddings for semantic search.
+</ParamField>
+
+<ParamField path="QDRANT_URL" type="string" required>
+  URL for the Qdrant vector search engine.
+
+  **Default (development)**:
+  ```bash
+  QDRANT_URL=http://localhost:6333
+  ```
+
+  **Production example**:
+  ```bash
+  QDRANT_URL=https://qdrant.example.com:6333
+  ```
+</ParamField>
+
+### Authentication & Security
+
+<ParamField path="JWT_SECRET_KEY" type="string" required>
+  Secret key for signing JWT tokens.
+
+  **Generate a secure key**:
+  ```bash
+  openssl rand -hex 32
+  ```
+
+  **Example**:
+  ```bash
+  JWT_SECRET_KEY=a7f4c3e2b1d0a9f8e7d6c5b4a3e2d1c0b9a8f7e6d5c4b3a2e1d0c9b8a7f6e5d4
+  ```
+
+  <Warning>
+    Use a cryptographically secure random string. Never use default or example values in production.
+  </Warning>
+</ParamField>
+
+<ParamField path="JWT_ALGORITHM" type="string" required>
+  Algorithm for JWT token signing.
+
+  **Recommended**: `HS256`
+
+  ```bash
+  JWT_ALGORITHM=HS256
+  ```
+
+  Other options: `HS384`, `HS512`, `RS256`
+</ParamField>
+
+<ParamField path="JWT_EXPIRY" type="integer" required>
+  JWT token expiration time in seconds.
+
+  **Default**: `86400` (24 hours)
+
+  ```bash
+  JWT_EXPIRY=86400
+  ```
+
+  Examples:
+  - 1 hour: `3600`
+  - 7 days: `604800`
+  - 30 days: `2592000`
+</ParamField>
+
+<ParamField path="ENCRYPTION_KEY" type="string" required>
+  Key for encrypting sensitive data at rest.
+
+  **Generate using Fernet**:
+  ```python
+  from cryptography.fernet import Fernet
+  print(Fernet.generate_key().decode())
+  ```
+
+  **Example**:
+  ```bash
+  ENCRYPTION_KEY=gAAAAABhk..._base64_encoded_key_...
+  ```
+</ParamField>
+
+<ParamField path="ENABLE_PASSWORD_VALIDATION" type="boolean">
+  Enable/disable password strength validation.
+
+  ```bash
+  ENABLE_PASSWORD_VALIDATION=true
+  ```
+
+  - `true`: Enforce password complexity requirements
+  - `false`: Allow any password (development only)
+</ParamField>
+
+## Environment-Specific Configuration
+
+### Development (.env)
+
+For local development with Docker Compose:
+
+```bash
+# AI Model
+MODEL=gemini-2.0-flash-exp
+GEMINI_API_KEY=your_gemini_key
+
+# Databases (Docker defaults)
+DATABASE_URL=postgresql+asyncpg://postgres:admin@localhost:5434/bot_db
+DATABASE_URL_SYNC=postgresql://postgres:admin@localhost:5434/bot_db
+VECTOR_DATABASE_URL=postgresql://postgres:admin@localhost:5433/vector_db
+QDRANT_URL=http://localhost:6333
+
+# Security (development keys)
+JWT_ALGORITHM=HS256
+JWT_SECRET_KEY=dev_secret_key_change_in_production
+JWT_EXPIRY=86400
+ENCRYPTION_KEY=dev_encryption_key_change_in_production
+ENABLE_PASSWORD_VALIDATION=false
+```
+
+### Production (.env.prod)
+
+For production deployment:
+
+```bash
+# AI Model
+MODEL=gemini-2.0-flash-exp
+GEMINI_API_KEYS=key1,key2,key3  # Multiple keys for rate limiting
+
+# Databases (internal Docker network)
+DATABASE_URL=postgresql+asyncpg://postgres:secure_password@db:5434/bot_db
+DATABASE_URL_SYNC=postgresql://postgres:secure_password@db:5434/bot_db
+VECTOR_DATABASE_URL=postgresql://postgres:secure_password@vector_db:5432/vector_db
+QDRANT_URL=http://qdrant:6333
+
+# Security (strong production keys)
+JWT_ALGORITHM=HS256
+JWT_SECRET_KEY=<generated_with_openssl_rand_hex_32>
+JWT_EXPIRY=86400
+ENCRYPTION_KEY=<generated_with_fernet>
+ENABLE_PASSWORD_VALIDATION=true
+```
+
+<Warning>
+  In production:
+  - Use strong, randomly generated keys
+  - Enable password validation
+  - Use internal Docker network hostnames for services
+  - Consider using secrets management (e.g., AWS Secrets Manager, HashiCorp Vault)
+</Warning>
+
+## Loading Environment Variables
+
+### Python Application
+
+The application automatically loads `.env` using `python-dotenv`:
+
+```python
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    model: str
+    database_url: str
+    jwt_secret_key: str
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+```
+
+### Docker Compose
+
+Specify the env file in `docker-compose.yml`:
+
+```yaml
+services:
+  backend:
+    env_file:
+      - .env.prod
+```
+
+### Manual Loading
+
+```bash
+# Load and export all variables
+export $(cat .env | xargs)
+
+# Verify
+echo $DATABASE_URL
+```
+
+## Validation
+
+Verify your configuration before deployment:
+
+<Tabs>
+  <Tab title="Check Required Variables">
+    ```bash
+    # List all required variables
+    grep -v '^#' .env.example | cut -d= -f1
+
+    # Check if set in .env
+    for var in $(grep -v '^#' .env.example | cut -d= -f1); do
+      if grep -q "^$var=" .env; then
+        echo "✓ $var is set"
+      else
+        echo "✗ $var is missing"
+      fi
+    done
+    ```
+  </Tab>
+
+  <Tab title="Test Database Connection">
+    ```bash
+    # Source environment
+    export $(cat .env | xargs)
+
+    # Test PostgreSQL
+    psql $DATABASE_URL_SYNC -c "SELECT 1;"
+
+    # Test Qdrant
+    curl $QDRANT_URL/collections
+    ```
+  </Tab>
+
+  <Tab title="Validate API Keys">
+    ```python
+    import os
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    # Load environment
+    from dotenv import load_dotenv
+    load_dotenv()
+
+    # Test Gemini key
+    llm = ChatGoogleGenerativeAI(model=os.getenv("MODEL"))
+    response = llm.invoke("Hello")
+    print("✓ API key valid")
+    ```
+  </Tab>
+</Tabs>
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use environment-specific files">
+    Maintain separate files for each environment:
+    - `.env` - Development
+    - `.env.prod` - Production
+    - `.env.test` - Testing
+
+    Add all to `.gitignore`:
+    ```bash
+    .env
+    .env.*
+    !.env.example
+    ```
+  </Accordion>
+
+  <Accordion title="Rotate secrets regularly">
+    Update credentials periodically:
+    ```bash
+    # Generate new JWT secret
+    openssl rand -hex 32
+
+    # Generate new encryption key
+    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    ```
+  </Accordion>
+
+  <Accordion title="Use secrets management in production">
+    Consider using:
+    - **AWS Secrets Manager**
+    - **HashiCorp Vault**
+    - **Azure Key Vault**
+    - **Google Secret Manager**
+
+    Example with AWS:
+    ```python
+    import boto3
+    import json
+
+    def get_secret():
+        client = boto3.client('secretsmanager')
+        response = client.get_secret_value(SecretId='support-bot/prod')
+        return json.loads(response['SecretString'])
+    ```
+  </Accordion>
+
+  <Accordion title="Restrict file permissions">
+    ```bash
+    chmod 600 .env
+    ```
+
+    Prevents other users from reading sensitive values.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Environment Not Loading
+
+<AccordionGroup>
+  <Accordion title="Variables not found">
+    1. Verify file location:
+       ```bash
+       ls -la .env
+       ```
+    2. Check file format (no BOM, Unix line endings):
+       ```bash
+       file .env
+       ```
+    3. Validate syntax:
+       ```bash
+       # No spaces around =
+       KEY=value      # ✓ Correct
+       KEY = value    # ✗ Wrong
+       ```
+  </Accordion>
+
+  <Accordion title="Docker not loading .env">
+    Verify `env_file` in docker-compose.yml:
+    ```yaml
+    services:
+      backend:
+        env_file:
+          - .env.prod  # Path relative to docker-compose.yml
+    ```
+
+    Check loaded variables:
+    ```bash
+    docker-compose config
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Connection Errors
+
+<AccordionGroup>
+  <Accordion title="Database connection failed">
+    1. Verify URL format:
+       ```bash
+       echo $DATABASE_URL
+       ```
+    2. Check host reachability:
+       ```bash
+       nc -zv localhost 5434
+       ```
+    3. Test credentials:
+       ```bash
+       psql $DATABASE_URL_SYNC -c "SELECT 1;"
+       ```
+  </Accordion>
+
+  <Accordion title="Invalid API key">
+    1. Check key is set:
+       ```bash
+       echo ${GEMINI_API_KEY:0:10}...  # Show first 10 chars
+       ```
+    2. Verify no extra whitespace:
+       ```bash
+       export GEMINI_API_KEY=$(echo $GEMINI_API_KEY | xargs)
+       ```
+    3. Test in API console:
+       - [Google AI Studio](https://makersuite.google.com/)
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/deployment/installation">
+    Complete installation steps
+  </Card>
+  <Card title="Docker Deployment" icon="docker" href="/deployment/docker">
+    Deploy with Docker Compose
+  </Card>
+</CardGroup>

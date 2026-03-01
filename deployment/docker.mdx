@@ -1,0 +1,294 @@
+---
+title: Docker Deployment
+description: Deploy Support Bot using Docker and Docker Compose
+---
+
+## Overview
+
+Support Bot provides Docker configurations for both development and production environments. Docker Compose orchestrates multiple services including the backend API, frontend, databases, and vector storage.
+
+## Docker Compose Files
+
+The project includes two Docker Compose configurations:
+
+- **`docker-compose.yml`** - Development environment with exposed ports and Adminer
+- **`docker-compose.prod.yml`** - Production environment with optimized settings
+
+## Development Deployment
+
+The development configuration starts supporting services without the application containers.
+
+<Steps>
+  <Step title="Start development services">
+    ```bash
+    docker-compose up -d
+    ```
+
+    This starts:
+    - **PostgreSQL** (port 5434) - Main application database
+    - **pgvector** (port 5433) - Vector embeddings database
+    - **Qdrant** (ports 6333, 6334) - Vector search engine
+    - **Adminer** (port 8080) - Web-based database management
+  </Step>
+
+  <Step title="Verify services are running">
+    ```bash
+    docker ps
+    ```
+
+    Expected containers:
+    - `postgres-db`
+    - `vector-db`
+    - `qdrant-db`
+    - `adminer`
+  </Step>
+
+  <Step title="Access services">
+    - **Qdrant UI**: http://localhost:6333/dashboard
+    - **Adminer**: http://localhost:8080
+    - **Main DB**: localhost:5434
+    - **Vector DB**: localhost:5433
+  </Step>
+</Steps>
+
+## Production Deployment
+
+The production configuration includes the backend and frontend containers.
+
+<Steps>
+  <Step title="Create production environment file">
+    ```bash
+    cp .env.example .env.prod
+    ```
+
+    Configure all required environment variables. See [Environment Configuration](/deployment/environment).
+  </Step>
+
+  <Step title="Build and start services">
+    ```bash
+    docker-compose -f docker-compose.prod.yml up -d --build
+    ```
+
+    This builds and starts:
+    - **Backend** (port 8000) - FastAPI application
+    - **Frontend** (port 3000) - React application
+    - **PostgreSQL** - Main database
+    - **pgvector** - Vector database
+    - **Qdrant** - Vector search
+  </Step>
+
+  <Step title="Monitor logs">
+    ```bash
+    docker-compose -f docker-compose.prod.yml logs -f
+    ```
+  </Step>
+</Steps>
+
+## Service Configuration
+
+### PostgreSQL (Main Database)
+
+```yaml
+db:
+  image: postgres:18-alpine
+  environment:
+    POSTGRES_PASSWORD: admin
+    POSTGRES_USER: postgres
+    POSTGRES_DB: bot_db
+  ports:
+    - "5434:5432"
+  volumes:
+    - bot_db_data:/var/lib/postgresql/data
+```
+
+**Connection String**: `postgresql://postgres:admin@localhost:5434/bot_db`
+
+### pgvector (Vector Database)
+
+```yaml
+vector_db:
+  image: ankane/pgvector
+  environment:
+    POSTGRES_PASSWORD: admin
+    POSTGRES_USER: postgres
+    POSTGRES_DB: vector_db
+  ports:
+    - "5433:5432"
+  volumes:
+    - vector_db_data:/var/lib/postgresql/data
+```
+
+**Connection String**: `postgresql://postgres:admin@localhost:5433/vector_db`
+
+### Qdrant (Vector Search)
+
+```yaml
+qdrant:
+  image: qdrant/qdrant
+  ports:
+    - "6333:6333"  # HTTP API
+    - "6334:6334"  # gRPC
+  volumes:
+    - qdrant_storage:/qdrant/storage
+```
+
+**URL**: `http://localhost:6333`
+
+## Backend Container
+
+The production backend container is built from `Dockerfile.backend.prod`:
+
+### Build Process
+
+1. Based on `python:3.11-slim`
+2. Installs system dependencies (curl, gcc)
+3. Installs `uv` for dependency management
+4. Syncs Python dependencies from `pyproject.toml`
+5. Copies application source code
+
+### Startup Sequence
+
+The container automatically runs:
+
+```bash
+# 1. Run database migrations
+uv run alembic -c src/api/db/alembic.ini upgrade head
+
+# 2. Ingest initial data (first run only)
+if [ ! -f /app/.ingested ]; then
+  uv run python scripts/ingestion/main.py
+  touch /app/.ingested
+fi
+
+# 3. Create admin user
+uv run python scripts/create_admin.py
+
+# 4. Start the FastAPI server
+uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --log-level info
+```
+
+## Volume Management
+
+### Persistent Volumes
+
+```yaml
+volumes:
+  bot_db_data:      # PostgreSQL data
+  vector_db_data:   # pgvector data
+  qdrant_storage:   # Qdrant indices
+```
+
+### Backup Volumes
+
+```bash
+# Backup database
+docker run --rm -v bot_db_data:/data -v $(pwd):/backup \
+  alpine tar czf /backup/bot_db_backup.tar.gz -C /data .
+
+# Restore database
+docker run --rm -v bot_db_data:/data -v $(pwd):/backup \
+  alpine tar xzf /backup/bot_db_backup.tar.gz -C /data
+```
+
+## Common Operations
+
+### Stop Services
+
+```bash
+# Development
+docker-compose down
+
+# Production
+docker-compose -f docker-compose.prod.yml down
+```
+
+### Remove Volumes
+
+<Warning>
+  This will delete all data. Make sure to backup first.
+</Warning>
+
+```bash
+docker-compose down -v
+```
+
+### View Logs
+
+```bash
+# All services
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f backend
+
+# Last 100 lines
+docker-compose logs --tail=100
+```
+
+### Rebuild Containers
+
+```bash
+# Rebuild and restart
+docker-compose up -d --build
+
+# Force rebuild without cache
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+## Troubleshooting
+
+### Port Conflicts
+
+If ports are already in use, modify the port mappings in `docker-compose.yml`:
+
+```yaml
+ports:
+  - "5435:5432"  # Changed from 5434
+```
+
+### Container Won't Start
+
+1. Check logs:
+   ```bash
+   docker-compose logs <service-name>
+   ```
+
+2. Verify environment variables:
+   ```bash
+   docker-compose config
+   ```
+
+3. Check container status:
+   ```bash
+   docker ps -a
+   ```
+
+### Database Connection Issues
+
+1. Ensure containers are running:
+   ```bash
+   docker ps | grep postgres
+   ```
+
+2. Test connection:
+   ```bash
+   docker exec -it postgres-db psql -U postgres -d bot_db
+   ```
+
+3. Check network:
+   ```bash
+   docker network ls
+   docker network inspect support-bot_default
+   ```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Database Setup" icon="database" href="/deployment/database">
+    Run migrations and configure PostgreSQL
+  </Card>
+  <Card title="Environment Variables" icon="gear" href="/deployment/environment">
+    Configure required environment variables
+  </Card>
+</CardGroup>

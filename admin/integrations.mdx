@@ -1,0 +1,381 @@
+---
+title: Integrations
+description: Connect external platforms to automatically sync incident data
+icon: plug
+---
+
+Integrations allow Support Bot to automatically pull incident data from external systems like ServiceNow, Jira, or other ITSM platforms. This keeps your knowledge base up-to-date without manual data entry.
+
+## Supported Integration Types
+
+Support Bot supports various authentication methods for connecting to external systems:
+
+<CardGroup cols={2}>
+  <Card title="Basic Auth" icon="user-lock">
+    Username and password authentication for ServiceNow and similar platforms.
+  </Card>
+  
+  <Card title="API Token" icon="key">
+    Token-based authentication for platforms like Jira or custom APIs.
+  </Card>
+  
+  <Card title="OAuth 2.0" icon="shield-check">
+    Modern OAuth2 flow for secure, delegated access.
+  </Card>
+</CardGroup>
+
+## Adding an Integration
+
+<Steps>
+  <Step title="Navigate to Integrations">
+    From the sidebar, go to **Settings** > **Integrations**.
+  </Step>
+  
+  <Step title="Click Add">
+    Click the **Add** button to open the integration creation dialog.
+  </Step>
+  
+  <Step title="Enter Service Name">
+    Provide a descriptive name (e.g., "Production ServiceNow", "Jira Cloud").
+  </Step>
+  
+  <Step title="Select Authentication Type">
+    Choose the authentication method your external system uses:
+    
+    <Tabs>
+      <Tab title="Basic Auth">
+        Required fields:
+        - **URL** - Base URL of your ServiceNow instance (e.g., `https://company.service-now.com`)
+        - **Username** - Your ServiceNow username
+        - **Password** - Your ServiceNow password
+        
+        <Warning>
+          Credentials are stored encrypted. Never share them.
+        </Warning>
+      </Tab>
+      
+      <Tab title="API Token">
+        Required fields:
+        - **URL** - API endpoint URL
+        - **API Token** - Your authentication token
+        
+        Optional fields:
+        - **API Key** - If the platform uses both key and token
+      </Tab>
+      
+      <Tab title="OAuth 2.0">
+        Required fields:
+        - **Client ID** - OAuth client identifier
+        - **Client Secret** - OAuth client secret
+        - **Token URL** - OAuth token endpoint
+        - **Authorization URL** - OAuth authorization endpoint
+      </Tab>
+    </Tabs>
+  </Step>
+  
+  <Step title="Save">
+    Click **Save** to create the integration.
+  </Step>
+</Steps>
+
+## Managing Integrations
+
+### View All Integrations
+
+The integrations page displays all configured connections with:
+
+- **Service name** and authentication type
+- **Status** (enabled/disabled)
+- **Last sync** timestamp
+- **Sync status** (success/error/never)
+- **Error details** (if last sync failed)
+
+### Edit Integration
+
+<Steps>
+  <Step title="Expand Integration Card">
+    Click anywhere on the integration card to expand it.
+  </Step>
+  
+  <Step title="Click Edit">
+    Click the **Edit** button to enable editing mode.
+  </Step>
+  
+  <Step title="Update Settings">
+    Modify any configuration fields:
+    - Service name
+    - Credentials (username/password/token)
+    - URL endpoints
+    - Enable/disable toggle
+  </Step>
+  
+  <Step title="Save Changes">
+    Click **Save** to apply your updates.
+  </Step>
+</Steps>
+
+<Note>
+  Credentials are masked in the UI. To update a password or token, you must enter the new value explicitly.
+</Note>
+
+### Enable/Disable Integration
+
+Toggle the **Enabled** switch on any integration card to activate or deactivate it:
+
+- **Enabled** - Integration will sync on schedule
+- **Disabled** - No automatic syncing; manual sync still possible
+
+### Delete Integration
+
+<Warning>
+  Deleting an integration is permanent. The connection configuration will be removed, but already-synced data remains in your knowledge base.
+</Warning>
+
+<Steps>
+  <Step title="Expand Integration">
+    Click the integration card to expand it.
+  </Step>
+  
+  <Step title="Click Delete">
+    Click the **Delete** button.
+  </Step>
+  
+  <Step title="Confirm">
+    Confirm the deletion in the dialog that appears.
+  </Step>
+</Steps>
+
+## Syncing Data
+
+### Manual Sync
+
+Trigger an immediate sync to pull the latest data from your external system:
+
+<Steps>
+  <Step title="Expand Integration">
+    Click the integration card to expand it.
+  </Step>
+  
+  <Step title="Click Sync">
+    Click the **Sync Now** button.
+  </Step>
+  
+  <Step title="Monitor Progress">
+    A progress indicator shows:
+    - Current batch being processed
+    - Total batches
+    - Number of incidents processed
+    
+    The sync runs in real-time with live progress updates.
+  </Step>
+  
+  <Step title="Review Results">
+    When complete, the integration card updates with:
+    - New "Last sync" timestamp
+    - Sync status (success/error)
+    - Statistics (incidents added, total incidents)
+  </Step>
+</Steps>
+
+### Automatic Sync
+
+<Note>
+  Automatic scheduled syncing will be available in a future release. Currently, all syncs are manual.
+</Note>
+
+### Sync Process
+
+When a sync runs:
+
+1. **Fetch** - Support Bot queries the external system for new or updated incidents
+2. **Normalize** - Incident data is transformed to Support Bot's schema
+3. **Batch** - Data is processed in batches (5 incidents per batch)
+4. **Ingest** - Incidents are embedded and added to the vector database
+5. **Version** - A new dataset version is created for audit purposes
+
+<Info>
+  Only incidents modified since the last sync are fetched (incremental sync).
+</Info>
+
+## ServiceNow Integration
+
+### Configuration
+
+For ServiceNow specifically:
+
+<Steps>
+  <Step title="Get ServiceNow URL">
+    Your instance URL format: `https://[instance-name].service-now.com`
+  </Step>
+  
+  <Step title="Create Service Account">
+    In ServiceNow, create a dedicated service account for Support Bot with:
+    - Read access to incident table (`incident`)
+    - Read access to sys_user table (for user info)
+    - No delete or modify permissions (read-only)
+  </Step>
+  
+  <Step title="Configure Integration">
+    In Support Bot:
+    - Service Name: "ServiceNow Production"
+    - Auth Type: Basic Auth
+    - URL: `https://[instance-name].service-now.com`
+    - Username: Service account username
+    - Password: Service account password
+  </Step>
+  
+  <Step title="Test">
+    Save and run a manual sync to verify the connection works.
+  </Step>
+</Steps>
+
+### Synced Fields
+
+Support Bot syncs the following ServiceNow incident fields:
+
+- **Number** - Incident identifier (e.g., INC0010001)
+- **Short Description** - Brief summary
+- **Description** - Full incident details
+- **State** - Current status
+- **Priority** - Incident priority
+- **Category** - Incident category
+- **Subcategory** - More specific categorization
+- **Assigned To** - Person currently handling the incident
+- **Resolved By** - Person who resolved it
+- **Resolution Notes** - How it was resolved
+- **Timestamps** - Created, updated, resolved dates
+
+### Filtering
+
+Currently, all incidents are synced. Custom filtering (by priority, category, date range) will be available in a future release.
+
+## Sync Status and Errors
+
+### Status Indicators
+
+<ResponseField name="Never synced" type="gray">
+  Integration has been created but never run
+</ResponseField>
+
+<ResponseField name="Success" type="green">
+  Last sync completed without errors
+</ResponseField>
+
+<ResponseField name="Error" type="red">
+  Last sync failed. Check error message for details.
+</ResponseField>
+
+### Common Errors
+
+<AccordionGroup>
+  <Accordion title="Authentication Failed">
+    **Cause:** Invalid credentials or expired password
+    
+    **Solution:**
+    - Verify username and password are correct
+    - Check if the service account is locked
+    - Update credentials and try again
+  </Accordion>
+  
+  <Accordion title="Connection Timeout">
+    **Cause:** ServiceNow instance unreachable or network issues
+    
+    **Solution:**
+    - Verify the URL is correct
+    - Check firewall rules allow outbound HTTPS
+    - Ensure the ServiceNow instance is online
+  </Accordion>
+  
+  <Accordion title="Insufficient Permissions">
+    **Cause:** Service account lacks required read permissions
+    
+    **Solution:**
+    - Grant the account `incident` table read access
+    - Grant `sys_user` table read access
+    - Test with an admin account to isolate permission issues
+  </Accordion>
+  
+  <Accordion title="Rate Limiting">
+    **Cause:** Too many API requests in a short time
+    
+    **Solution:**
+    - Wait a few minutes before retrying
+    - Contact your ServiceNow admin about rate limits
+    - Reduce sync frequency if applicable
+  </Accordion>
+</AccordionGroup>
+
+### Viewing Error Details
+
+When a sync fails:
+
+1. The integration card shows a red **Error** status
+2. Expand the card to see the full error message
+3. The "Last sync" timestamp shows when the error occurred
+
+## Data Versioning
+
+Each sync creates a new dataset version for audit and rollback purposes:
+
+- **Version ID** - Unique identifier for this sync
+- **Timestamp** - When the sync occurred
+- **Source** - Integration name (e.g., "ServiceNow")
+- **Stats** - Number of incidents added/updated
+- **Notes** - Auto-generated description
+
+Versions can be viewed in **Settings** > **Knowledge Base** > **Version History**.
+
+## Required Permissions
+
+| Action | Permission Required |
+|--------|--------------------|
+| View integrations | `integration.view` |
+| Add integration | `integration.create` |
+| Edit integration | `integration.edit` |
+| Delete integration | `integration.delete` |
+| Trigger sync | `integration.sync` |
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Service Accounts" icon="user-gear">
+    Create dedicated service accounts in external systems rather than using personal credentials.
+  </Card>
+  
+  <Card title="Test in Staging" icon="flask">
+    Set up a staging integration first to verify configuration before connecting to production.
+  </Card>
+  
+  <Card title="Monitor Sync Status" icon="chart-line">
+    Regularly check integration health to catch sync failures early.
+  </Card>
+  
+  <Card title="Read-Only Access" icon="lock">
+    Grant integrations only read permissions in external systems for security.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Sync Completes But No Data
+
+1. Check if there are new incidents since the last sync (incremental sync only fetches changes)
+2. Verify the service account has access to the incident table
+3. Check ServiceNow instance logs for API request errors
+
+### Slow Sync Performance
+
+1. ServiceNow may be rate-limiting requests
+2. Large incident volumes take longer (5 incidents per batch)
+3. Network latency between Support Bot and ServiceNow instance
+
+### Credentials Keep Failing
+
+1. Verify the service account is active in ServiceNow
+2. Check if the account requires MFA (not supported - use app password)
+3. Ensure password hasn't expired
+4. Test login directly in ServiceNow UI with same credentials
+
+## API Reference
+
+For programmatic integration management, see the [Integrations API](/api/admin/integrations) documentation.
